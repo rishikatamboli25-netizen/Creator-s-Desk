@@ -1,0 +1,17 @@
+{
+  "name": "payment-service",
+  "version": "1.0.0",
+  "description": "Payment service for Creator's Desk",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.9.3"
+  }
+}
