@@ -124,4 +124,14 @@ app.put('/me', requireAuth, async (req, res) => {
   }
 });
 
+// Health Check
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    service: 'auth-service',
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.listen(PORT, '0.0.0.0', () => console.log(`🔐 Auth Service running on port ${PORT}`));

@@ -51,6 +51,16 @@ app.get('/me', requireAuth, async (req, res) => {
   }
 });
 
+// Health Check
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    service: 'order-service',
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🛒 Order Service running on port ${PORT}`);
 });

@@ -7,7 +7,12 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ status: 'Cart service is under construction.' }));
 });
 
+
+
 // CRITICAL FIX: Bound to 0.0.0.0 for Render internal routing
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🛒 Cart Service running on port ${PORT}`);
 });
+
+
+

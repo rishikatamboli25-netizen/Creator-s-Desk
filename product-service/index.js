@@ -47,6 +47,16 @@ app.get('/:slug', async (req, res) => {
   }
 });
 
+// Health Check
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    service: 'product-service',
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`📦 Product Service running on port ${PORT}`);
 });
