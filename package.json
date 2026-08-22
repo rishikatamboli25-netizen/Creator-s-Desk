@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "install:all": "npm install && npm install --prefix api-gateway && npm install --prefix auth-service && npm install --prefix product-service && npm install --prefix cart-service && npm install --prefix order-service && npm install --prefix frontend",
-    "start:dev": "concurrently \"npm run dev --prefix api-gateway\" \"npm run dev --prefix auth-service\" \"npm run dev --prefix product-service\" \"npm run dev --prefix cart-service\" \"npm run dev --prefix order-service\" \"npm run dev --prefix frontend\""
+    "start:dev": "concurrently \"npm run dev --prefix api-gateway\" \"npm run dev --prefix auth-service\" \"npm run dev --prefix product-service\" \"npm run dev --prefix cart-service\" \"npm run dev --prefix order-service\" \"npm run dev --prefix frontend\"",
+    "dev": "concurrently \"npm --prefix api-gateway run dev\" \"npm --prefix auth-service run dev\" \"npm --prefix product-service run dev\" \"npm --prefix order-service run dev\" \"npm --prefix cart-service run dev\" \"npm --prefix wishlist-service run dev\""
   },
   "dependencies": {
     "concurrently": "^8.2.2"
