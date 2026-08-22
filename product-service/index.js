@@ -20,14 +20,51 @@ mongoose.connect(process.env.MONGO_URI_PRODUCTS || 'mongodb://localhost:27017/cr
 // 1. Get ALL Products
 app.get('/', async (req, res) => {
   try {
-    const { category } = req.query;
-    const filter = category ? { category } : {};
-    
+    const {
+      category,
+      minPrice,
+      maxPrice,
+      inStock
+    } = req.query;
+
+    const filter = {};
+
+    // Category filter
+    if (category) {
+      filter.category = category;
+    }
+
+    // Minimum price
+    if (minPrice !== undefined) {
+      filter.price = {
+        ...filter.price,
+        $gte: Number(minPrice)
+      };
+    }
+
+    // Maximum price
+    if (maxPrice !== undefined) {
+      filter.price = {
+        ...filter.price,
+        $lte: Number(maxPrice)
+      };
+    }
+
+    // Stock filter
+    if (inStock !== undefined) {
+      filter.inStock = inStock === 'true';
+    }
+
     const products = await Product.find(filter);
+
     res.status(200).json(products);
+
   } catch (error) {
-    console.error("Error fetching products:", error);
-    res.status(500).json({ error: 'Failed to fetch catalog' });
+    console.error('Error fetching products:', error);
+
+    res.status(500).json({
+      error: 'Failed to fetch catalog'
+    });
   }
 });
 
