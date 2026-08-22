@@ -20,9 +20,9 @@ const PRODUCT_SERVICE_URL =
   process.env.PRODUCT_SERVICE_URL || 'http://localhost:5002';
 
 
-// --------------------------------------------------
-// Health Check
-// --------------------------------------------------
+// ==================================================
+// HEALTH CHECK
+// ==================================================
 
 app.get('/health', (req, res) => {
   res.status(200).json({
@@ -34,28 +34,44 @@ app.get('/health', (req, res) => {
 });
 
 
-// --------------------------------------------------
-// Desk Builder
-// --------------------------------------------------
+// ==================================================
+// DESK BUILDER
+// ==================================================
 
 app.post('/desk-builder', async (req, res) => {
   try {
+
     const {
       useCase,
       budget,
-      existingProducts,
-      preferences
+      existingProducts = [],
+      preferences = {}
     } = req.body;
 
-    if (!useCase || !budget) {
+
+    // ------------------------------------------------
+    // 1. Validate user input
+    // ------------------------------------------------
+
+    if (!Array.isArray(useCase) || useCase.length === 0) {
       return res.status(400).json({
-        error: 'useCase and budget are required'
+        error: 'useCase must be a non-empty array'
       });
     }
 
-    // ----------------------------------------------
-    // 1. Ask Gemini to understand the user
-    // ----------------------------------------------
+    if (
+      typeof budget !== 'number' ||
+      budget <= 0
+    ) {
+      return res.status(400).json({
+        error: 'budget must be a positive number'
+      });
+    }
+
+
+    // ------------------------------------------------
+    // 2. Ask Gemini to analyze requirements
+    // ------------------------------------------------
 
     const analysisPrompt = `
 You are an AI desk setup expert for an ecommerce store.
@@ -70,7 +86,7 @@ ${JSON.stringify({
   preferences
 })}
 
-Return this exact structure:
+Return exactly:
 
 {
   "useCases": [],
@@ -84,10 +100,12 @@ Return this exact structure:
 }
 
 Rules:
+
 - Keep the budget exactly as provided.
 - Do not invent products.
-- Categories should describe the types of products useful for the setup.
-- Consider the user's existing products so you don't recommend duplicates.
+- Categories should describe useful product types.
+- Consider existing products.
+- Do not recommend products yet.
 `;
 
     const analysisResponse = await ai.models.generateContent({
@@ -103,9 +121,9 @@ Rules:
     );
 
 
-    // ----------------------------------------------
-    // 2. Get real products from Product Service
-    // ----------------------------------------------
+    // ------------------------------------------------
+    // 3. Fetch REAL catalog
+    // ------------------------------------------------
 
     const productResponse = await fetch(
       `${PRODUCT_SERVICE_URL}/`
@@ -120,14 +138,14 @@ Rules:
     const catalog = await productResponse.json();
 
 
-    // ----------------------------------------------
-    // 3. Ask Gemini to recommend products
-    // ----------------------------------------------
+    // ------------------------------------------------
+    // 4. Ask Gemini for recommendations
+    // ------------------------------------------------
 
     const recommendationPrompt = `
 You are an expert AI desk setup recommendation engine.
 
-Your job is to recommend products ONLY from the provided catalog.
+Recommend products ONLY from the supplied catalog.
 
 USER REQUIREMENTS:
 ${JSON.stringify(requirements)}
@@ -135,21 +153,19 @@ ${JSON.stringify(requirements)}
 AVAILABLE PRODUCTS:
 ${JSON.stringify(catalog)}
 
-IMPORTANT RULES:
+RULES:
 
-1. ONLY recommend products whose "_id" exists in the catalog.
-2. NEVER invent a product.
-3. NEVER change a product's price.
-4. NEVER recommend products where "inStock" is false.
-5. Do not recommend products the user already owns.
-6. Stay within the user's maximum budget.
-7. Prefer products matching the user's use cases and preferences.
-8. Recommend between 2 and 5 products.
-9. Explain briefly why each product fits the setup.
-10. If the catalog does not contain suitable products, return an empty recommendations array.
-11. The total price must be calculated from the catalog prices.
+1. ONLY use product IDs from the catalog.
+2. NEVER invent products.
+3. NEVER modify prices.
+4. NEVER recommend out-of-stock products.
+5. NEVER recommend something already owned.
+6. Stay within the budget.
+7. Recommend between 2 and 5 products when possible.
+8. Explain why each product fits.
+9. Return ONLY valid JSON.
 
-Return ONLY valid JSON using this exact structure:
+Return exactly:
 
 {
   "recommendations": [
@@ -160,45 +176,229 @@ Return ONLY valid JSON using this exact structure:
       "reason": "short explanation"
     }
   ],
-  "totalPrice": number,
-  "withinBudget": true,
-  "summary": "short explanation of the recommended setup"
+  "summary": "short explanation"
 }
 `;
 
-    const recommendationResponse = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
-      contents: recommendationPrompt,
-      config: {
-        responseMimeType: 'application/json'
-      }
-    });
+    const recommendationResponse =
+      await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: recommendationPrompt,
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
 
-    const recommendations = JSON.parse(
+    const aiResult = JSON.parse(
       recommendationResponse.text
     );
 
 
-    // ----------------------------------------------
-    // 4. Return final result
-    // ----------------------------------------------
+    // ------------------------------------------------
+    // 5. BACKEND VALIDATION
+    // ------------------------------------------------
+
+    const catalogMap = new Map(
+      catalog.map(product => [
+        product._id.toString(),
+        product
+      ])
+    );
+
+    const existingProductNames =
+      existingProducts.map(product =>
+        product.toString().toLowerCase()
+      );
+
+
+    const validatedRecommendations = [];
+
+
+    for (const recommendation of
+      aiResult.recommendations || []) {
+
+      const productId =
+        recommendation.productId?.toString();
+
+      const realProduct =
+        catalogMap.get(productId);
+
+
+      // ----------------------------------------------
+      // Product must exist
+      // ----------------------------------------------
+
+      if (!realProduct) {
+        console.warn(
+          `⚠️ AI recommended unknown product: ${productId}`
+        );
+
+        continue;
+      }
+
+
+      // ----------------------------------------------
+      // Product must be in stock
+      // ----------------------------------------------
+
+      if (!realProduct.inStock) {
+        console.warn(
+          `⚠️ AI recommended out-of-stock product: ${realProduct.name}`
+        );
+
+        continue;
+      }
+
+
+      // ----------------------------------------------
+      // Don't recommend existing products
+      // ----------------------------------------------
+
+      if (
+        existingProductNames.includes(
+          realProduct.name.toLowerCase()
+        ) ||
+        existingProductNames.includes(
+          realProduct.slug.toLowerCase()
+        ) ||
+        existingProductNames.includes(
+          realProduct._id.toString().toLowerCase()
+        )
+      ) {
+        continue;
+      }
+
+
+      // ----------------------------------------------
+      // ALWAYS use DB price
+      // ----------------------------------------------
+
+      validatedRecommendations.push({
+        productId: realProduct._id,
+        name: realProduct.name,
+        price: realProduct.price,
+        image: realProduct.image,
+        slug: realProduct.slug,
+        reason:
+          recommendation.reason ||
+          'Recommended based on your desk setup preferences.'
+      });
+    }
+
+
+    // ------------------------------------------------
+    // 6. Backend calculates total
+    // ------------------------------------------------
+
+    const totalPrice =
+      validatedRecommendations.reduce(
+        (total, product) =>
+          total + product.price,
+        0
+      );
+
+
+    // ------------------------------------------------
+    // 7. Final budget validation
+    // ------------------------------------------------
+
+    const withinBudget =
+      totalPrice <= budget;
+
+
+    let finalRecommendations =
+      validatedRecommendations;
+
+
+    // Safety fallback:
+    // If Gemini somehow returned products above budget,
+    // remove products until the total is within budget.
+
+    if (!withinBudget) {
+
+      finalRecommendations = [];
+
+      let runningTotal = 0;
+
+      for (const product of
+        validatedRecommendations) {
+
+        if (
+          runningTotal + product.price <=
+          budget
+        ) {
+          finalRecommendations.push(product);
+
+          runningTotal += product.price;
+        }
+      }
+    }
+
+
+    // Recalculate after budget filtering
+
+    const finalTotal =
+      finalRecommendations.reduce(
+        (total, product) =>
+          total + product.price,
+        0
+      );
+
+
+    // ------------------------------------------------
+    // 8. Send trusted response
+    // ------------------------------------------------
 
     res.status(200).json({
-      message: 'Desk setup generated successfully',
+
+      message:
+        'Desk setup generated successfully',
+
       requirements,
-      recommendations
+
+      recommendations: {
+
+        recommendations:
+          finalRecommendations,
+
+        totalPrice:
+          finalTotal,
+
+        withinBudget:
+          finalTotal <= budget,
+
+        summary:
+          aiResult.summary ||
+          'Recommended products selected based on your requirements.'
+      }
     });
 
+
   } catch (error) {
-    console.error('❌ Desk Builder Error:', error);
+
+    console.error(
+      '❌ Desk Builder Error:',
+      error
+    );
 
     res.status(500).json({
-      error: 'Failed to process desk setup request'
+      error:
+        'Failed to process desk setup request'
     });
   }
 });
 
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🤖 AI Service running on port ${PORT}`);
-});
+// ==================================================
+// START SERVER
+// ==================================================
+
+app.listen(
+  PORT,
+  '0.0.0.0',
+  () => {
+    console.log(
+      `🤖 AI Service running on port ${PORT}`
+    );
+  }
+);
