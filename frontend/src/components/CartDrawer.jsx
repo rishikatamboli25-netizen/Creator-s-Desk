@@ -39,7 +39,7 @@ const CartDrawer = () => {
 
       {/* Slide-out Drawer */}
       <div
-        className={`fixed inset-y-0 right-0 w-full max-w-md bg-creator-white border-l border-creator-border shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`fixed inset-y-0 right-0 w-full max-w-md bg-creator-white border-l border-creator-border shadow-2xl z-[999] transform transition-transform duration-300 ease-in-out flex flex-col ${
           isCartOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
