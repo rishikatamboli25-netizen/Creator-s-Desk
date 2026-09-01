@@ -1,15 +1,43 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useCart } from "../context/CartContext";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+
+// Dedicated Skeleton for Cart Rows
+const CartItemSkeleton = () => (
+  <div className="flex gap-4">
+    <div className="w-20 h-20 bg-gray-200 animate-pulse border border-creator-border flex-shrink-0" />
+    <div className="flex-1 flex flex-col justify-between py-1">
+      <div>
+        <div className="h-4 w-3/4 bg-gray-200 animate-pulse mb-2 rounded-sm" />
+        <div className="h-3 w-1/4 bg-gray-200 animate-pulse rounded-sm" />
+      </div>
+      <div className="flex justify-between items-center mt-2">
+        <div className="h-4 w-1/4 bg-gray-200 animate-pulse rounded-sm" />
+        <div className="h-3 w-12 bg-gray-200 animate-pulse rounded-sm" />
+      </div>
+    </div>
+  </div>
+);
 
 const CartDrawer = () => {
   const { isCartOpen, toggleCart, cartItems, removeFromCart, cartTotal, clearCart } = useCart();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  
+  // Simulated loading state for when the drawer opens (e.g., verifying stock/syncing)
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Trigger the skeleton loading pulse every time the cart opens
+  useEffect(() => {
+    if (isCartOpen) {
+      setIsSyncing(true);
+      const timer = setTimeout(() => setIsSyncing(false), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [isCartOpen]);
 
   // --- Auto-Clear Logic ---
-  // Whenever the auth state changes, if they are logged out, wipe the cart.
   useEffect(() => {
     if (!isAuthenticated && cartItems.length > 0 && clearCart) {
       clearCart();
@@ -17,15 +45,16 @@ const CartDrawer = () => {
   }, [isAuthenticated, cartItems.length, clearCart]);
 
   const handleProceedToCheckout = () => {
-    toggleCart(); // Close the drawer first
+    toggleCart(); 
     
     if (isAuthenticated) {
       navigate('/payment');
     } else {
-      // Not logged in! Send them to login, but attach the return ticket
       navigate('/login', { state: { returnTo: '/payment' } });
     }
   };
+
+  const skeletonArray = Array.from({ length: Math.max(cartItems.length, 2) }); // Show at least 2 skeletons
 
   return (
     <>
@@ -54,13 +83,18 @@ const CartDrawer = () => {
           </button>
         </div>
 
-        {/* Cart Items */}
+        {/* Cart Items Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {cartItems.length === 0 ? (
+          {isSyncing ? (
+            // 1. Skeleton Loading State
+            skeletonArray.map((_, idx) => <CartItemSkeleton key={idx} />)
+          ) : cartItems.length === 0 ? (
+            // 2. Empty State
             <p className="text-creator-muted text-center mt-12 text-sm uppercase tracking-widest">
               Your cart is currently empty.
             </p>
           ) : (
+            // 3. Loaded State
             cartItems.map((item) => (
               <div key={item.id} className="flex gap-4">
                 <div className="w-20 h-20 bg-creator-surface border border-creator-border flex-shrink-0">
@@ -95,8 +129,8 @@ const CartDrawer = () => {
         </div>
 
         {/* Footer / Checkout */}
-        {cartItems.length > 0 && (
-          <div className="p-6 border-t border-creator-border bg-white">
+        {cartItems.length > 0 && !isSyncing && (
+          <div className="p-6 border-t border-creator-border bg-white animate-in fade-in duration-300">
             <div className="flex justify-between items-center mb-6">
               <span className="text-sm uppercase tracking-widest text-creator-muted">
                 Subtotal
@@ -104,13 +138,25 @@ const CartDrawer = () => {
               <span className="text-xl font-medium">${cartTotal.toFixed(2)}</span>
             </div>
             
-            {/* The Intercept Button */}
             <button
               onClick={handleProceedToCheckout}
               className="block text-center w-full bg-creator-black text-creator-white py-4 text-sm uppercase tracking-widest hover:bg-gray-900 transition-colors"
             >
               Proceed to Checkout
             </button>
+          </div>
+        )}
+
+        {/* Skeleton Footer (Shown during sync if cart has items) */}
+        {cartItems.length > 0 && isSyncing && (
+          <div className="p-6 border-t border-creator-border bg-white">
+            <div className="flex justify-between items-center mb-6">
+              <span className="text-sm uppercase tracking-widest text-creator-muted">
+                Subtotal
+              </span>
+              <div className="h-6 w-20 bg-gray-200 animate-pulse rounded-sm" />
+            </div>
+            <div className="w-full h-[52px] bg-gray-200 animate-pulse rounded-sm" />
           </div>
         )}
       </div>

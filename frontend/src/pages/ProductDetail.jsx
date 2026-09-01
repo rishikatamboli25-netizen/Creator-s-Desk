@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import ProductCard from "../components/ProductCard";
+import ProductDetailSkeleton from "../components/Loading/ProductDetailSkeleton"; // <-- Added Skeleton Import
 
 const ProductDetail = () => {
   const { slug } = useParams();
@@ -10,13 +11,13 @@ const ProductDetail = () => {
   const location = useLocation();
   
   const { addToCart } = useCart();
-  const { isAuthenticated } = useAuth(); // <-- Added Auth Context
+  const { isAuthenticated } = useAuth();
   
   const [product, setProduct] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
-  const [isWishlisted, setIsWishlisted] = useState(false); // <-- New Wishlist State
+  const [isWishlisted, setIsWishlisted] = useState(false);
   const [shareText, setShareText] = useState("Share");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
@@ -59,7 +60,6 @@ const ProductDetail = () => {
         try {
           const { action, targetSlug } = JSON.parse(pendingStr);
           
-          // If the pending action was for THIS product, execute it
           if (targetSlug === product.slug) {
             if (action === 'cart') {
               setIsAdding(true);
@@ -67,13 +67,11 @@ const ProductDetail = () => {
               setTimeout(() => setIsAdding(false), 800);
             } else if (action === 'wishlist') {
               setIsWishlisted(true);
-              // Future: Call your backend API here to save wishlist to DB
             }
           }
         } catch (e) {
           console.error('Failed to parse pending action', e);
         } finally {
-          // Always clear it out so it doesn't loop
           localStorage.removeItem('pendingAction');
         }
       }
@@ -100,7 +98,6 @@ const ProductDetail = () => {
       return;
     }
 
-    // In a full production app, you would POST this to an /api/wishlist route
     setIsWishlisted(true);
     setTimeout(() => setIsWishlisted(false), 2000); 
   };
@@ -111,8 +108,9 @@ const ProductDetail = () => {
     setTimeout(() => setShareText("Share"), 2000);
   };
 
+  // --- IMPLEMENTED SKELETON HERE ---
   if (isLoading) {
-    return <div className="min-h-[70vh] flex items-center justify-center uppercase tracking-widest text-sm text-creator-muted">Loading Details...</div>;
+    return <ProductDetailSkeleton />;
   }
 
   if (!product) {

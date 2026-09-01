@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import ProductCardSkeleton from '../components/Loading/ProductCardSkeleton'; // <-- Added Skeleton Import
 
 const Category = () => {
   const { categoryName } = useParams();
@@ -37,26 +38,38 @@ const Category = () => {
     fetchCategoryProducts();
   }, [categoryName, formattedCategory]);
 
-  if (isLoading) {
-    return <div className="min-h-[70vh] flex items-center justify-center uppercase tracking-widest text-sm text-creator-muted">Loading Collection...</div>;
-  }
+  // Array to map 6 skeleton cards
+  const skeletonArray = Array.from({ length: 6 });
 
   return (
     <main className="min-h-screen bg-creator-white text-creator-black pb-24">
       
-      {/* Category Header */}
+      {/* Category Header - Now loads instantly! */}
       <div className="bg-creator-surface border-b border-creator-border py-16 px-8 text-center">
         <h1 className="text-4xl md:text-5xl font-light tracking-tighter mb-4">
           {formattedCategory}
         </h1>
-        <p className="text-creator-muted text-sm uppercase tracking-widest">
-          {products.length} {products.length === 1 ? 'Item' : 'Items'} Available
-        </p>
+        <div className="text-creator-muted text-sm uppercase tracking-widest flex justify-center">
+          {isLoading ? (
+            /* Tiny skeleton for the item count text */
+            <div className="h-4 w-24 bg-gray-200 animate-pulse rounded" />
+          ) : (
+            `${products.length} ${products.length === 1 ? 'Item' : 'Items'} Available`
+          )}
+        </div>
       </div>
 
-      {/* Product Grid */}
+      {/* Product Grid Area */}
       <div className="max-w-7xl mx-auto px-8 pt-16">
-        {products.length === 0 ? (
+        {isLoading ? (
+          // 1. Loading State (Skeletons)
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+            {skeletonArray.map((_, i) => (
+              <ProductCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : products.length === 0 ? (
+          // 2. Empty State
           <div className="text-center py-24">
             <h2 className="text-xl font-light mb-4">No products found in this category.</h2>
             <Link to="/" className="text-sm uppercase tracking-widest border-b border-creator-black pb-1 hover:text-creator-muted hover:border-creator-muted transition-colors">
@@ -64,6 +77,7 @@ const Category = () => {
             </Link>
           </div>
         ) : (
+          // 3. Loaded State
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
             {products.map((product) => (
               <ProductCard key={product.id} product={product} />

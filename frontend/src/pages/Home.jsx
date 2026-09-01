@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import ProductCardSkeleton from '../components/Loading/ProductCardSkeleton';
 
 const Home = () => {
   const [products, setProducts] = useState([]);
@@ -14,7 +15,6 @@ const Home = () => {
         if (!response.ok) throw new Error('Failed to fetch catalog');
         
         const data = await response.json();
-        // Map slug to id so ProductCard works seamlessly
         const formattedProducts = data.map(p => ({ ...p, id: p.slug }));
         setProducts(formattedProducts);
       } catch (err) {
@@ -28,13 +28,12 @@ const Home = () => {
     fetchProducts();
   }, []);
 
-  // 1. Grab our Latest Tech (Taking the first 3 from the DB as "Recent")
   const recentProducts = products.slice(0, 3);
-
-  // 2. Grab a few top organizers for the Essentials section
   const deskEssentials = products.filter(product => product.category === 'Desk Organizers').slice(0, 3);
 
-  if (isLoading) return <div className="min-h-[70vh] flex items-center justify-center uppercase tracking-widest text-sm text-creator-muted">Loading Latest Gear...</div>;
+  // Helper array to render 3 skeletons
+  const skeletonArray = Array.from({ length: 3 });
+
   if (error) return <div className="min-h-[70vh] flex items-center justify-center uppercase tracking-widest text-sm text-red-500">{error}</div>;
 
   return (
@@ -48,13 +47,14 @@ const Home = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
-          {recentProducts.map((product) => (
-            <ProductCard key={product._id} product={product} />
-          ))}
+          {isLoading 
+            ? skeletonArray.map((_, i) => <ProductCardSkeleton key={i} />)
+            : recentProducts.map((product) => <ProductCard key={product._id} product={product} />)
+          }
         </div>
       </section>
 
-      {/* SECTION 2: Quick Categories */}
+      {/* SECTION 2: Quick Categories (Loads Instantly) */}
       <section className="bg-creator-surface -mx-8 px-8 py-20 md:px-16 border-y border-creator-border">
         <div className="max-w-7xl mx-auto">
           <h2 className="text-2xl font-light tracking-tight mb-10">Explore by Category</h2>
@@ -92,13 +92,14 @@ const Home = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
-          {deskEssentials.map((product) => (
-            <ProductCard key={product._id} product={product} />
-          ))}
+          {isLoading 
+            ? skeletonArray.map((_, i) => <ProductCardSkeleton key={i} />)
+            : deskEssentials.map((product) => <ProductCard key={product._id} product={product} />)
+          }
         </div>
       </section>
 
-      {/* SECTION 4: Trust & Value Proposition */}
+      {/* SECTION 4: Trust & Value Proposition (Loads Instantly) */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-12 border-t border-creator-border pt-20">
         <div>
           <h4 className="text-sm font-bold uppercase tracking-widest mb-3">Free Shipping</h4>
