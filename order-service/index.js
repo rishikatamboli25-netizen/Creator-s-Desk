@@ -6,52 +6,100 @@ import Order from './models/Order.js';
 import { requireAuth } from './middleware/authMiddleware.js';
 
 dotenv.config();
+
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 5003; 
+const PORT = process.env.PORT || 5003;
 
-mongoose.connect(process.env.MONGO_URI_ORDERS || 'mongodb://localhost:27017/creatorsdesk_orders')
+mongoose
+  .connect(
+    process.env.MONGO_URI_ORDERS ||
+      'mongodb://localhost:27017/creatorsdesk_orders'
+  )
   .then(() => console.log('✅ Order Service DB Connected'))
-  .catch((err) => console.error('❌ Order DB Connection Error:', err));
+  .catch((err) =>
+    console.error('❌ Order DB Connection Error:', err)
+  );
 
-// --- CORRECTED ROUTES (Prefixes Dropped) ---
+// --------------------------------------------------
+// CREATE A NEW ORDER
+// --------------------------------------------------
 
-// 1. Create a New Order (Checkout)
 app.post('/', requireAuth, async (req, res) => {
   try {
-    const { items, totalAmount, shippingAddress } = req.body;
+    const {
+      items,
+      totalAmount,
+      shippingAddress,
+      paymentMethod
+    } = req.body;
 
+    // Check cart
     if (!items || items.length === 0) {
-      return res.status(400).json({ error: 'Cart is empty' });
+      return res.status(400).json({
+        error: 'Cart is empty'
+      });
+    }
+
+    // Validate payment method
+    if (!paymentMethod || !['COD', 'ONLINE'].includes(paymentMethod)) {
+      return res.status(400).json({
+        error: 'Invalid payment method'
+      });
     }
 
     const newOrder = await Order.create({
-      userId: req.user.userId, 
+      userId: req.user.userId,
       items,
       totalAmount,
-      shippingAddress
+      shippingAddress,
+      paymentMethod
     });
 
-    res.status(201).json({ message: 'Order placed successfully!', orderId: newOrder._id });
+    res.status(201).json({
+      message: 'Order placed successfully!',
+      orderId: newOrder._id
+    });
+
   } catch (error) {
-    console.error("Checkout Error:", error);
-    res.status(500).json({ error: 'Failed to process order' });
+    console.error('Checkout Error:', error);
+
+    res.status(500).json({
+      error: 'Failed to process order'
+    });
   }
 });
 
-// 2. Get logged-in user's order history
+// --------------------------------------------------
+// GET LOGGED-IN USER'S ORDER HISTORY
+// --------------------------------------------------
+
 app.get('/me', requireAuth, async (req, res) => {
   try {
-    const orders = await Order.find({ userId: req.user.userId }).sort({ createdAt: -1 });
+    const orders = await Order.find({
+      userId: req.user.userId
+    }).sort({
+      createdAt: -1
+    });
+
     res.status(200).json(orders);
+
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch order history' });
+    console.error('Order History Error:', error);
+
+    res.status(500).json({
+      error: 'Failed to fetch order history'
+    });
   }
 });
 
-// Health Check
+// --------------------------------------------------
+// HEALTH CHECK
+// --------------------------------------------------
+
 app.get('/health', (req, res) => {
   res.status(200).json({
     service: 'order-service',
@@ -60,6 +108,10 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// --------------------------------------------------
+// START SERVER
+// --------------------------------------------------
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🛒 Order Service running on port ${PORT}`);

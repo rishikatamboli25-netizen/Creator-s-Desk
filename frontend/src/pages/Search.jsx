@@ -34,6 +34,8 @@ const Search = () => {
   const searchParams = new URLSearchParams(location.search);
   const query = searchParams.get('q') || '';
 
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
+
   useEffect(() => {
     const fetchSearchResults = async () => {
       setIsLoading(true);

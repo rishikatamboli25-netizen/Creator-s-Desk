@@ -16,18 +16,8 @@ const Payment = () => {
   const [error, setError] = useState(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   
-  const [cardDetails, setCardDetails] = useState({
-    number: '',
-    expiry: '',
-    cvc: ''
-  });
-
-  // --- ADDED: Shipping Address State for Auto-fill ---
   const [shippingAddress, setShippingAddress] = useState({
-    street: '',
-    city: '',
-    state: '',
-    zip: ''
+    street: '', city: '', state: '', zip: ''
   });
   
   const [isSuccess, setIsSuccess] = useState(false);
@@ -35,7 +25,18 @@ const Payment = () => {
 
   const finalTotal = cartTotal > 150 ? cartTotal : cartTotal + 15;
 
-  // --- THE AUTOMATION: Fetching past orders to auto-fill ---
+  // Clean Vite environment variable
+  const BASE_URL = import.meta.env.VITE_BASE_BACKEND_URL || 'http://localhost:5000';
+
+  // 1. Dynamically load the Razorpay script
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
+
+  // 2. Fetch past orders to auto-fill address
   useEffect(() => {
     const fetchLastOrder = async () => {
       if (!token) {
@@ -43,13 +44,12 @@ const Payment = () => {
         return;
       }
       try {
-        const response = await fetch('https://creator-s-desk-api-gateway.onrender.com/api/orders/me', {
+        const response = await fetch(`${BASE_URL}/api/orders/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
         if (response.ok) {
           const orders = await response.json();
-          // If they ordered before, auto-fill the address
           if (orders && orders.length > 0 && orders[0].shippingAddress) {
             setShippingAddress(orders[0].shippingAddress);
           }
@@ -62,16 +62,39 @@ const Payment = () => {
     };
 
     fetchLastOrder();
-  }, [token]);
+  }, [token, BASE_URL]);
 
-  // --- UPDATED: Validation Logic to include shipping ---
   const isShippingValid = shippingAddress.street.trim() !== '' && shippingAddress.city.trim() !== '' && shippingAddress.state.trim() !== '' && shippingAddress.zip.trim() !== '';
-  const isCardValid = cardDetails.number.trim() !== '' && cardDetails.expiry.trim() !== '' && cardDetails.cvc.trim() !== '';
-  const isFormIncomplete = (paymentMethod === 'card' && !isCardValid) || !isShippingValid;
 
+  // Helper function to save the order to your DB after successful payment or COD
+  const saveOrderToDatabase = async (paymentId = null) => {
+    const response = await fetch(`${BASE_URL}/api/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        items: orderItems.map(item => ({
+          productId: item.id || item._id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity || 1
+        })),
+        totalAmount: finalTotal,
+        shippingAddress,
+        paymentMethod,
+        paymentId 
+      })
+    });
+
+    if (!response.ok) throw new Error('Failed to save order to database');
+    return await response.json();
+  };
+
+  // 3. The Main Checkout Handler
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
-    
     if (!isAuthenticated) {
       navigate('/login');
       return;
@@ -81,36 +104,76 @@ const Payment = () => {
     setError(null);
     
     try {
-      const response = await fetch('https://creator-s-desk-api-gateway.onrender.com/api/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          items: orderItems.map(item => ({
-            productId: item.id || item._id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity || 1
-          })),
-          totalAmount: finalTotal,
-          shippingAddress // Using the real state instead of the hardcoded default
-        })
-      });
+      if (paymentMethod === 'cod') {
+        // STANDARD COD FLOW
+        const data = await saveOrderToDatabase();
+        if (clearCart) clearCart();
+        setConfirmedOrderId(data.orderId);
+        setIsSuccess(true);
+        setIsProcessing(false);
+      } 
+      else if (paymentMethod === 'card') {
+        // RAZORPAY FLOW
+        const orderResponse = await fetch(`${BASE_URL}/api/payment/create-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: finalTotal }),
+        });
 
-      if (!response.ok) throw new Error('Failed to process order');
-      const data = await response.json();
-      
-      if (clearCart) clearCart();
-      
-      setConfirmedOrderId(data.orderId);
-      setIsSuccess(true);
-      
+        const orderData = await orderResponse.json();
+        if (!orderResponse.ok) throw new Error(orderData.error || 'Failed to create payment order');
+
+        const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
+
+        const options = {
+          key: razorpayKey,
+          amount: orderData.amount,
+          currency: orderData.currency,
+          name: "Creator's Desk",
+          description: "Premium Workspace Setup",
+          order_id: orderData.id,
+          handler: async (response) => {
+            try {
+              // Verify Signature
+              const verifyRes = await fetch(`${BASE_URL}/api/payment/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+
+              if (verifyRes.ok) {
+                // Payment verified! Now save it to the Order Service
+                const dbData = await saveOrderToDatabase(response.razorpay_payment_id);
+                if (clearCart) clearCart();
+                setConfirmedOrderId(dbData.orderId || response.razorpay_order_id);
+                setIsSuccess(true);
+              } else {
+                setError('Payment verification failed');
+              }
+            } catch (err) {
+              setError('Error verifying payment.');
+            } finally {
+              setIsProcessing(false);
+            }
+          },
+          theme: { color: '#000000' },
+          modal: {
+            ondismiss: function() {
+              setIsProcessing(false); // Reset button if user closes modal
+            }
+          }
+        };
+
+        const razorpayInstance = new window.Razorpay(options);
+        razorpayInstance.open();
+      }
     } catch (err) {
       console.error(err);
-      setError("Payment failed. Please try again.");
-    } finally {
+      setError("Something went wrong. Please try again.");
       setIsProcessing(false);
     }
   };
@@ -119,46 +182,27 @@ const Payment = () => {
     return (
       <main className="min-h-[calc(100vh-89px)] bg-creator-surface flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-md bg-creator-white border border-creator-border p-12 text-center animate-fadeIn">
-          
           <div className="flex justify-center mb-8">
             <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center animate-scaleIn">
-              <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M5 13l4 4L19 7" 
-                  className="animate-drawCheck"
-                  style={{ strokeDasharray: 50, strokeDashoffset: 50 }} 
-                />
+              <svg className="w-8 h-8 text-green-600 animate-drawCheck" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ strokeDasharray: 50, strokeDashoffset: 50 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
           </div>
-
-          <h1 className="text-3xl font-light tracking-tight text-creator-black mb-4">
-            Order Confirmed
-          </h1>
-          <p className="text-creator-muted text-sm leading-relaxed mb-2">
-            Your transaction was successful. 
-          </p>
+          <h1 className="text-3xl font-light tracking-tight text-creator-black mb-4">Order Confirmed</h1>
+          <p className="text-creator-muted text-sm leading-relaxed mb-2">Your transaction was successful.</p>
           <p className="text-xs font-medium tracking-widest text-creator-black uppercase mb-10">
             Order ID: {confirmedOrderId?.slice(-6).toUpperCase() || 'SYS-ERR'}
           </p>
-
-          <button 
-            onClick={() => navigate('/')}
-            className="w-full py-4 bg-creator-black text-creator-white text-sm uppercase tracking-widest hover:bg-gray-900 transition-colors"
-          >
+          <button onClick={() => navigate('/')} className="w-full py-4 bg-creator-black text-creator-white text-sm uppercase tracking-widest hover:bg-gray-900 transition-colors">
             Return to Home
           </button>
         </div>
       </main>
     );
   }
-
   return (
     <div className="min-h-[calc(100vh-89px)] bg-creator-white flex flex-col md:flex-row">
-      
       <div className="flex-1 flex flex-col justify-center px-8 md:px-24 py-12">
         <Link to="/" className="text-xl font-bold tracking-tighter text-creator-black mb-16 inline-block">
           CREATOR'S DESK.
@@ -177,43 +221,13 @@ const Payment = () => {
             <div className="text-sm text-creator-muted uppercase tracking-widest animate-pulse mb-8">Loading details...</div>
           ) : (
             <form onSubmit={handlePlaceOrder} className="space-y-6">
-              
-              {/* --- RESTORED: Shipping Details for Auto-fill --- */}
               <div className="space-y-4 mb-8">
                 <h2 className="text-sm font-bold uppercase tracking-widest mb-4 text-creator-black">Shipping Details</h2>
-                <input 
-                  type="text" 
-                  placeholder="Street Address" 
-                  value={shippingAddress.street}
-                  onChange={(e) => setShippingAddress({...shippingAddress, street: e.target.value})}
-                  className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent"
-                  required
-                />
-                <input 
-                  type="text" 
-                  placeholder="City" 
-                  value={shippingAddress.city}
-                  onChange={(e) => setShippingAddress({...shippingAddress, city: e.target.value})}
-                  className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent"
-                  required
-                />
+                <input type="text" placeholder="Street Address" value={shippingAddress.street} onChange={(e) => setShippingAddress({...shippingAddress, street: e.target.value})} className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent" required />
+                <input type="text" placeholder="City" value={shippingAddress.city} onChange={(e) => setShippingAddress({...shippingAddress, city: e.target.value})} className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent" required />
                 <div className="grid grid-cols-2 gap-4">
-                  <input 
-                    type="text" 
-                    placeholder="State" 
-                    value={shippingAddress.state}
-                    onChange={(e) => setShippingAddress({...shippingAddress, state: e.target.value})}
-                    className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent"
-                    required
-                  />
-                  <input 
-                    type="text" 
-                    placeholder="ZIP Code" 
-                    value={shippingAddress.zip}
-                    onChange={(e) => setShippingAddress({...shippingAddress, zip: e.target.value})}
-                    className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent"
-                    required
-                  />
+                  <input type="text" placeholder="State" value={shippingAddress.state} onChange={(e) => setShippingAddress({...shippingAddress, state: e.target.value})} className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent" required />
+                  <input type="text" placeholder="ZIP Code" value={shippingAddress.zip} onChange={(e) => setShippingAddress({...shippingAddress, zip: e.target.value})} className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent" required />
                 </div>
               </div>
 
@@ -221,77 +235,18 @@ const Payment = () => {
               <div className="space-y-4">
                 <label className={`block border p-4 cursor-pointer transition-colors ${paymentMethod === 'card' ? 'border-creator-black bg-creator-surface' : 'border-creator-border hover:border-gray-400'}`}>
                   <div className="flex items-center gap-3">
-                    <input 
-                      type="radio" 
-                      name="payment" 
-                      value="card" 
-                      checked={paymentMethod === 'card'}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="accent-creator-black w-4 h-4"
-                    />
-                    <span className="text-sm font-medium">Credit / Debit Card</span>
-                  </div>
-                </label>
-
-                <label className={`block border p-4 cursor-pointer transition-colors ${paymentMethod === 'paypal' ? 'border-creator-black bg-creator-surface' : 'border-creator-border hover:border-gray-400'}`}>
-                  <div className="flex items-center gap-3">
-                    <input 
-                      type="radio" 
-                      name="payment" 
-                      value="paypal" 
-                      checked={paymentMethod === 'paypal'}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="accent-creator-black w-4 h-4"
-                    />
-                    <span className="text-sm font-medium">PayPal</span>
+                    <input type="radio" name="payment" value="card" checked={paymentMethod === 'card'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-creator-black w-4 h-4" />
+                    <span className="text-sm font-medium">Pay with Cards, UPI or Netbanking (Razorpay)</span>
                   </div>
                 </label>
 
                 <label className={`block border p-4 cursor-pointer transition-colors ${paymentMethod === 'cod' ? 'border-creator-black bg-creator-surface' : 'border-creator-border hover:border-gray-400'}`}>
                   <div className="flex items-center gap-3">
-                    <input 
-                      type="radio" 
-                      name="payment" 
-                      value="cod" 
-                      checked={paymentMethod === 'cod'}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="accent-creator-black w-4 h-4"
-                    />
+                    <input type="radio" name="payment" value="cod" checked={paymentMethod === 'cod'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-creator-black w-4 h-4" />
                     <span className="text-sm font-medium">Cash on Delivery (COD)</span>
                   </div>
                 </label>
               </div>
-
-              {paymentMethod === 'card' && (
-                <div className="space-y-4 pt-4 border-t border-creator-border mt-6">
-                  <input 
-                    type="text" 
-                    placeholder="Card Number" 
-                    value={cardDetails.number}
-                    onChange={(e) => setCardDetails({...cardDetails, number: e.target.value})}
-                    className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent"
-                    required={paymentMethod === 'card'}
-                  />
-                  <div className="grid grid-cols-2 gap-4">
-                    <input 
-                      type="text" 
-                      placeholder="MM / YY"
-                      value={cardDetails.expiry}
-                      onChange={(e) => setCardDetails({...cardDetails, expiry: e.target.value})} 
-                      className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent"
-                      required={paymentMethod === 'card'}
-                    />
-                    <input 
-                      type="text" 
-                      placeholder="CVC" 
-                      value={cardDetails.cvc}
-                      onChange={(e) => setCardDetails({...cardDetails, cvc: e.target.value})}
-                      className="w-full border border-creator-border p-4 text-sm outline-none focus:border-creator-black transition-colors bg-transparent"
-                      required={paymentMethod === 'card'}
-                    />
-                  </div>
-                </div>
-              )}
 
               {paymentMethod === 'cod' && (
                 <div className="pt-4 border-t border-creator-border mt-6">
@@ -303,14 +258,14 @@ const Payment = () => {
 
               <button 
                 type="submit" 
-                disabled={isProcessing || orderItems.length === 0 || isFormIncomplete}
+                disabled={isProcessing || orderItems.length === 0 || !isShippingValid}
                 className={`w-full py-5 mt-8 text-sm uppercase tracking-widest transition-colors ${
-                  (isProcessing || orderItems.length === 0 || isFormIncomplete) 
+                  (isProcessing || orderItems.length === 0 || !isShippingValid) 
                   ? 'bg-creator-muted text-white cursor-not-allowed' 
                   : 'bg-creator-black text-creator-white hover:bg-gray-900'
                 }`}
               >
-                {isProcessing ? 'Processing...' : 'Place Order'}
+                {isProcessing ? 'Processing...' : (paymentMethod === 'card' ? 'Proceed to Razorpay' : 'Place Order')}
               </button>
             </form>
           )}
@@ -336,7 +291,6 @@ const Payment = () => {
           </div>
         </div>
       </div>
-
     </div>
   );
 };

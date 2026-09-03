@@ -14,12 +14,14 @@ const Category = () => {
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
+
   useEffect(() => {
     const fetchCategoryProducts = async () => {
       setIsLoading(true);
       try {
         // Fetch products filtered by the category query parameter
-        const response = await fetch(`https://creator-s-desk-api-gateway.onrender.com/api/products?category=${encodeURIComponent(formattedCategory)}`);
+        const response = await fetch(`${BACKEND_URL}/api/products?category=${encodeURIComponent(formattedCategory)}`);
         
         if (response.ok) {
           const data = await response.json();
