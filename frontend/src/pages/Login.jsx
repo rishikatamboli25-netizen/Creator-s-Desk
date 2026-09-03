@@ -12,6 +12,8 @@ const Login = () => {
   const [otp, setOtp] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
+
   const handleSendCode = async (e) => {
     e.preventDefault();
     setIsProcessing(true);
@@ -22,7 +24,7 @@ const Login = () => {
       : `+91${phone.replace(/\D/g, "")}`;
 
     try {
-      const response = await fetch("https://creator-s-desk-api-gateway.onrender.com/api/auth/send-code", {
+      const response = await fetch(`${BACKEND_URL}/api/auth/send-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // 2. Send the cleaned, formatted number
@@ -52,7 +54,7 @@ const Login = () => {
 
     try {
       const response = await fetch(
-        "https://creator-s-desk-api-gateway.onrender.com/api/auth/verify-code",
+        `${BACKEND_URL}/api/auth/verify-code`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

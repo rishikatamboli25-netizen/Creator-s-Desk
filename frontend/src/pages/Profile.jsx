@@ -26,6 +26,8 @@ const Profile = () => {
     zip: ''
   });
 
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
+
   // --- Concurrently Fetch User & Real Order History ---
   useEffect(() => {
     if (!token) {
@@ -36,10 +38,10 @@ const Profile = () => {
     const fetchDashboardData = async () => {
       try {
         const [userRes, ordersRes] = await Promise.all([
-          fetch('https://creator-s-desk-api-gateway.onrender.com/api/auth/me', {
+          fetch(`${BACKEND_URL}/api/auth/me`, {
             headers: { 'Authorization': `Bearer ${token}` }
           }),
-          fetch('https://creator-s-desk-api-gateway.onrender.com/api/orders/me', {
+          fetch(`${BACKEND_URL}/api/orders/me`, {
             headers: { 'Authorization': `Bearer ${token}` }
           })
         ]);
@@ -85,7 +87,7 @@ const Profile = () => {
     try {
       // Assuming your backend expects this structure. 
       // You may need to format { address: { street, city... } } depending on your API.
-      const response = await fetch('https://creator-s-desk-api-gateway.onrender.com/api/auth/me', {
+      const response = await fetch(`${BACKEND_URL}/api/auth/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

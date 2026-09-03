@@ -7,10 +7,12 @@ const Home = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
+
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await fetch('https://creator-s-desk-api-gateway.onrender.com/api/products');
+        const response = await fetch(`${BACKEND_URL}/api/products`);
         if (!response.ok) throw new Error('Failed to fetch catalog');
         
         const data = await response.json();

@@ -11,12 +11,14 @@ const Search = () => {
   const searchParams = new URLSearchParams(location.search);
   const query = searchParams.get('q') || '';
 
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
+
   useEffect(() => {
     const fetchSearchResults = async () => {
       setIsLoading(true);
       try {
         // Fetch all products
-        const response = await fetch('https://creator-s-desk-api-gateway.onrender.com/api/products');
+        const response = await fetch(`${BACKEND_URL}/api/products`);
         
         if (response.ok) {
           const allProducts = await response.json();

@@ -35,7 +35,7 @@ const createProxyOptions = (targetUrl, pathPrefix, serviceName) => ({
 app.use('/api/auth', createProxyMiddleware(createProxyOptions('https://creator-s-desk-auth-service.onrender.com', '/api/auth', 'Auth')));
 app.use('/api/products', createProxyMiddleware(createProxyOptions('https://creator-s-desk-product-service.onrender.com', '/api/products', 'Products')));
 app.use('/api/orders', createProxyMiddleware(createProxyOptions('https://creator-s-desk-order-service.onrender.com', '/api/orders', 'Orders')));
-
+app.use('/api/payment', createProxyMiddleware(createProxyOptions(process.env.PAYMENT_SERVICE_URL || 'http://localhost:5004', '/api/payment', 'Payment')));
 app.get('/health', (req, res) => res.status(200).json({ status: 'API Gateway is online.' }));
 
 const PORT = process.env.PORT || 5000;
