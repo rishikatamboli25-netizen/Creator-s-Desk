@@ -11,7 +11,7 @@ const Payment = () => {
   
   const { token, isAuthenticated } = useAuth();
   
-  const [paymentMethod, setPaymentMethod] = useState('card');
+  const [paymentMethod, setPaymentMethod] = useState('ONLINE');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -104,7 +104,7 @@ const Payment = () => {
     setError(null);
     
     try {
-      if (paymentMethod === 'cod') {
+      if (paymentMethod === 'COD') {
         // STANDARD COD FLOW
         const data = await saveOrderToDatabase();
         if (clearCart) clearCart();
@@ -112,7 +112,7 @@ const Payment = () => {
         setIsSuccess(true);
         setIsProcessing(false);
       } 
-      else if (paymentMethod === 'card') {
+      else if (paymentMethod === 'ONLINE') {
         // RAZORPAY FLOW
         const orderResponse = await fetch(`${BACKEND_URL}/api/payment/create-order`, {
           method: 'POST',
@@ -233,22 +233,22 @@ const Payment = () => {
 
               <h2 className="text-sm font-bold uppercase tracking-widest mb-4 text-creator-black">Payment Method</h2>
               <div className="space-y-4">
-                <label className={`block border p-4 cursor-pointer transition-colors ${paymentMethod === 'card' ? 'border-creator-black bg-creator-surface' : 'border-creator-border hover:border-gray-400'}`}>
+                <label className={`block border p-4 cursor-pointer transition-colors ${paymentMethod === 'ONLINE' ? 'border-creator-black bg-creator-surface' : 'border-creator-border hover:border-gray-400'}`}>
                   <div className="flex items-center gap-3">
-                    <input type="radio" name="payment" value="card" checked={paymentMethod === 'card'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-creator-black w-4 h-4" />
+                    <input type="radio" name="payment" value="ONLINE" checked={paymentMethod === 'ONLINE'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-creator-black w-4 h-4" />
                     <span className="text-sm font-medium">Pay with Cards, UPI or Netbanking (Razorpay)</span>
                   </div>
                 </label>
 
-                <label className={`block border p-4 cursor-pointer transition-colors ${paymentMethod === 'cod' ? 'border-creator-black bg-creator-surface' : 'border-creator-border hover:border-gray-400'}`}>
+                <label className={`block border p-4 cursor-pointer transition-colors ${paymentMethod === 'COD' ? 'border-creator-black bg-creator-surface' : 'border-creator-border hover:border-gray-400'}`}>
                   <div className="flex items-center gap-3">
-                    <input type="radio" name="payment" value="cod" checked={paymentMethod === 'cod'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-creator-black w-4 h-4" />
+                    <input type="radio" name="payment" value="COD" checked={paymentMethod === 'COD'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-creator-black w-4 h-4" />
                     <span className="text-sm font-medium">Cash on Delivery (COD)</span>
                   </div>
                 </label>
               </div>
 
-              {paymentMethod === 'cod' && (
+              {paymentMethod === 'COD' && (
                 <div className="pt-4 border-t border-creator-border mt-6">
                   <p className="text-sm text-creator-muted leading-relaxed">
                     You will pay for your order in cash upon delivery. Please ensure you have the exact amount available.
@@ -265,7 +265,7 @@ const Payment = () => {
                   : 'bg-creator-black text-creator-white hover:bg-gray-900'
                 }`}
               >
-                {isProcessing ? 'Processing...' : (paymentMethod === 'card' ? 'Proceed to Razorpay' : 'Place Order')}
+                {isProcessing ? 'Processing...' : (paymentMethod === 'ONLINE' ? 'Proceed to Razorpay' : 'Place Order')}
               </button>
             </form>
           )}
