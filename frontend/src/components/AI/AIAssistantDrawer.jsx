@@ -8,6 +8,7 @@ import ProductRecommendations from "./ProductRecommendations";
 export default function AIAssistantDrawer({ open, onClose, onAddToCart }) {
   const [messages, setMessages] = useState([]);
   const [activePrompt, setActivePrompt] = useState(null); 
+  const BACKEND_URL = import.meta.env(BACKEND_URL) || 'http://localhost:5000'
   
   // Start at the new fork in the road
   const stepRef = useRef("SETUP_OR_INDIVIDUAL"); 
@@ -90,7 +91,7 @@ export default function AIAssistantDrawer({ open, onClose, onAddToCart }) {
       addAssistantMessage("Let me check if we carry that... ⚡");
 
       try {
-        const res = await fetch("http://localhost:5005/validate-domain", {
+        const res = await fetch(`${BACKEND_URL}/validate-domain`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: text })
@@ -189,7 +190,7 @@ export default function AIAssistantDrawer({ open, onClose, onAddToCart }) {
     setTimeout(() => addAssistantMessage("Scanning the catalog... ⚡"), 500);
 
     try {
-      const response = await fetch("http://localhost:5005/desk-builder", {
+      const response = await fetch(`${BACKEND_URL}/desk-builder`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(dataRef.current),
