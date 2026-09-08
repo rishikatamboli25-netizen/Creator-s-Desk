@@ -26,7 +26,7 @@ const Payment = () => {
   const finalTotal = cartTotal > 150 ? cartTotal : cartTotal + 15;
 
   // Clean Vite environment variable
-  const BASE_URL = import.meta.env.VITE_BASE_BACKEND_URL || 'http://localhost:5000';
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
   // 1. Dynamically load the Razorpay script
   useEffect(() => {
@@ -44,7 +44,7 @@ const Payment = () => {
         return;
       }
       try {
-        const response = await fetch(`${BASE_URL}/api/orders/me`, {
+        const response = await fetch(`${BACKEND_URL}/api/orders/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -62,13 +62,13 @@ const Payment = () => {
     };
 
     fetchLastOrder();
-  }, [token, BASE_URL]);
+  }, [token, BACKEND_URL]);
 
   const isShippingValid = shippingAddress.street.trim() !== '' && shippingAddress.city.trim() !== '' && shippingAddress.state.trim() !== '' && shippingAddress.zip.trim() !== '';
 
   // Helper function to save the order to your DB after successful payment or COD
   const saveOrderToDatabase = async (paymentId = null) => {
-    const response = await fetch(`${BASE_URL}/api/orders`, {
+    const response = await fetch(`${BACKEND_URL}/api/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -114,7 +114,7 @@ const Payment = () => {
       } 
       else if (paymentMethod === 'card') {
         // RAZORPAY FLOW
-        const orderResponse = await fetch(`${BASE_URL}/api/payment/create-order`, {
+        const orderResponse = await fetch(`${BACKEND_URL}/api/payment/create-order`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ amount: finalTotal }),
@@ -135,7 +135,7 @@ const Payment = () => {
           handler: async (response) => {
             try {
               // Verify Signature
-              const verifyRes = await fetch(`${BASE_URL}/api/payment/verify`, {
+              const verifyRes = await fetch(`${BACKEND_URL}/api/payment/verify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
