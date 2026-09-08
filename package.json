@@ -9,6 +9,7 @@
     "dev": "concurrently \"npm --prefix api-gateway run dev\" \"npm --prefix auth-service run dev\" \"npm --prefix product-service run dev\" \"npm --prefix order-service run dev\" \"npm --prefix cart-service run dev\" \"npm --prefix wishlist-service run dev\""
   },
   "dependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "razorpay": "^2.9.8"
   }
 }
