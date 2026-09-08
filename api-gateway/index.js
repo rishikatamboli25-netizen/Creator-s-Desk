@@ -52,9 +52,9 @@ const createAIProxyOptions = (targetUrl, serviceName) => ({
   }
 });
 
-app.use('/api/auth', createProxyMiddleware(createProxyOptions( process.env, 'http://localhost:5001', '/api/auth', 'Auth')));
-app.use('/api/products', createProxyMiddleware(createProxyOptions('', '/api/products', 'Products')));
-app.use('/api/orders', createProxyMiddleware(createProxyOptions('', '/api/orders', 'Orders')));
+app.use('/api/auth', createProxyMiddleware(createProxyOptions( process.env.AUTH_SERVICE_URL, 'http://localhost:5001', '/api/auth', 'Auth')));
+app.use('/api/products', createProxyMiddleware(createProxyOptions(process.env.PRODUCT_SERVICE_URL,'http://localhost:5002', '/api/products', 'Products')));
+app.use('/api/orders', createProxyMiddleware(createProxyOptions(process.env.ORDER_SERVICE_URL,'http://localhost:5003', '/api/orders', 'Orders')));
 app.use('/api/payment', createProxyMiddleware(createProxyOptions(process.env.PAYMENT_SERVICE_URL || 'http://localhost:5004', '/api/payment', 'Payment')));
 app.use('/api',createProxyMiddleware(createAIProxyOptions(process.env.AI_SERVICE_URL || 'http://localhost:5005','AI')));
 app.get('/health', (req, res) => res.status(200).json({ status: 'API Gateway is online.' }));
