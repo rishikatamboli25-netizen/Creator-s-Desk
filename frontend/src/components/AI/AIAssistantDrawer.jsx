@@ -91,7 +91,7 @@ export default function AIAssistantDrawer({ open, onClose, onAddToCart }) {
       addAssistantMessage("Let me check if we carry that... ⚡");
 
       try {
-        const res = await fetch(`${BACKEND_URL}/validate-domain`, {
+        const res = await fetch(`${BACKEND_URL}/api/validate-domain`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: text })
@@ -190,7 +190,7 @@ export default function AIAssistantDrawer({ open, onClose, onAddToCart }) {
     setTimeout(() => addAssistantMessage("Scanning the catalog... ⚡"), 500);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/desk-builder`, {
+      const response = await fetch(`${BACKEND_URL}/api/desk-builder`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(dataRef.current),
