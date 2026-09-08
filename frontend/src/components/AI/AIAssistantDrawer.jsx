@@ -8,7 +8,7 @@ import ProductRecommendations from "./ProductRecommendations";
 export default function AIAssistantDrawer({ open, onClose, onAddToCart }) {
   const [messages, setMessages] = useState([]);
   const [activePrompt, setActivePrompt] = useState(null); 
-  const BACKEND_URL = import.meta.env(BACKEND_URL) || 'http://localhost:5000'
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'
   
   // Start at the new fork in the road
   const stepRef = useRef("SETUP_OR_INDIVIDUAL"); 
