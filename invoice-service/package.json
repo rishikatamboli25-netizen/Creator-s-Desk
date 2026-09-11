@@ -1,0 +1,22 @@
+{
+  "name": "invoice-service",
+  "version": "1.0.0",
+  "description": "Invoice service for Creator's Desk",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.0.0",
+    "cloudinary": "^2.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "pdfkit": "^0.20.2"
+  }
+}
