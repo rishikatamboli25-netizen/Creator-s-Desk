@@ -1,20 +1,15 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 import {
   DeleteMessageCommand,
   ReceiveMessageCommand,
   SendMessageCommand,
   SQSClient,
 } from '@aws-sdk/client-sqs';
-
 import Order from '../models/Order.js';
 
 const REGION = process.env.AWS_REGION;
 const ORDER_CREATED_QUEUE_URL = process.env.ORDER_CREATED_QUEUE_URL;
 const INVOICE_GENERATED_QUEUE_URL = process.env.INVOICE_GENERATED_QUEUE_URL;
 const VISIBILITY_TIMEOUT = Number(process.env.SQS_VISIBILITY_TIMEOUT || 120);
-
 const WAIT_TIME_SECONDS = 20;
 const MAX_NUMBER_OF_MESSAGES = 10;
 
@@ -73,7 +68,7 @@ export async function publishEvent(eventName, payload) {
 }
 
 async function handleInvoiceGenerated(payload) {
-  const { orderId, url, provider, publicId, generatedAt } = payload || {};
+  const { orderId, invoiceNumber, url, provider, publicId, generatedAt } = payload || {};
 
   if (!orderId || !url) {
     throw new Error('Invalid invoice.generated event: orderId and url are required');

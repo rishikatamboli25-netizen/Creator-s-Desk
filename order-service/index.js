@@ -1,7 +1,9 @@
+import 'dotenv/config';
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import Order from './models/Order.js';
 import { requireAuth } from './middleware/authMiddleware.js';
 import {
@@ -10,14 +12,17 @@ import {
   stopSqsConsumers,
 } from './events/sqs.js';
 
-dotenv.config();
-
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 5003;
+const DEFAULT_SHIPPING_CHARGE = 20;
+
+function generateInvoiceNumber() {
+  return crypto.randomInt(100000000000, 1000000000000).toString();
+}
 
 mongoose
   .connect(
@@ -36,6 +41,7 @@ app.post('/', requireAuth, async (req, res) => {
       shippingAddress,
       paymentMethod,
       paymentId,
+      customerName,
     } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -46,6 +52,10 @@ app.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid payment method' });
     }
 
+    if (!customerName || !customerName.trim()) {
+      return res.status(400).json({ error: 'Customer name is required' });
+    }
+
     const newOrder = await Order.create({
       userId: req.user.userId,
       items,
@@ -53,6 +63,9 @@ app.post('/', requireAuth, async (req, res) => {
       shippingAddress,
       paymentMethod,
       paymentId: paymentId || null,
+      customerName: customerName.trim(),
+      shippingCharge: DEFAULT_SHIPPING_CHARGE,
+      'document.invoiceNumber': generateInvoiceNumber(),
     });
 
     // Publish only authoritative, persisted order data.
@@ -61,10 +74,13 @@ app.post('/', requireAuth, async (req, res) => {
         orderId: newOrder._id.toString(),
         userId: newOrder.userId,
         items: newOrder.items,
-        totalAmount: newOrder.totalAmount,
         paymentMethod: newOrder.paymentMethod,
         paymentId: newOrder.paymentId,
+        customerName: newOrder.customerName,
         shippingAddress: newOrder.shippingAddress,
+        shippingCharge: newOrder.shippingCharge,
+        totalAmount: newOrder.totalAmount,
+        invoiceNumber: newOrder.document?.invoiceNumber,
         createdAt: newOrder.createdAt,
       });
     } catch (eventError) {
@@ -108,26 +124,14 @@ app.get('/me', requireAuth, async (req, res) => {
 // GET ONE LOGGED-IN USER'S ORDER
 app.get('/:orderId', requireAuth, async (req, res) => {
   try {
-    console.log('🔎 Fetch order request:', {
-      orderId: req.params.orderId,
-      userId: req.user.userId,
-    });
-
     const order = await Order.findOne({
       _id: req.params.orderId,
       userId: req.user.userId,
     });
 
     if (!order) {
-      console.log('❌ Order not found:', {
-        orderId: req.params.orderId,
-        userId: req.user.userId,
-      });
-
       return res.status(404).json({ error: 'Order not found' });
     }
-
-    console.log('✅ Order found:', order._id.toString());
 
     res.status(200).json(order);
   } catch (error) {

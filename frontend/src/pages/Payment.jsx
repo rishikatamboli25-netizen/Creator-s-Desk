@@ -1,37 +1,38 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { useCart } from "../context/CartContext";
-import { useAuth } from "../context/AuthContext";
-import InvoiceModal from "../components/InvoiceModal";
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
+import InvoiceModal from '../components/InvoiceModal';
 
 const Payment = () => {
   const navigate = useNavigate();
   const { cart, cartItems, cartTotal, clearCart } = useCart();
   const orderItems = cartItems || cart || [];
-  const { token, isAuthenticated } = useAuth();
+  const { token, user, isAuthenticated } = useAuth();
 
-  const [paymentMethod, setPaymentMethod] = useState("ONLINE");
+  const [paymentMethod, setPaymentMethod] = useState('ONLINE');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [shippingAddress, setShippingAddress] = useState({
-    street: "",
-    city: "",
-    state: "",
-    zip: "",
+    street: '',
+    city: '',
+    state: '',
+    zip: '',
   });
   const [isSuccess, setIsSuccess] = useState(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [completedOrderData, setCompletedOrderData] = useState(null);
 
-  const finalTotal = cartTotal > 150 ? cartTotal : cartTotal + 15;
+  const SHIPPING_CHARGE = 20;
+  const finalTotal = cartTotal + SHIPPING_CHARGE;
   const BACKEND_URL =
-    import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+    import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
   useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
     document.body.appendChild(script);
 
@@ -59,7 +60,7 @@ const Payment = () => {
           }
         }
       } catch (err) {
-        console.error("Failed to fetch order history");
+        console.error('Failed to fetch order history');
       } finally {
         setIsLoadingHistory(false);
       }
@@ -69,16 +70,16 @@ const Payment = () => {
   }, [token, BACKEND_URL]);
 
   const isShippingValid =
-    shippingAddress.street.trim() !== "" &&
-    shippingAddress.city.trim() !== "" &&
-    shippingAddress.state.trim() !== "" &&
-    shippingAddress.zip.trim() !== "";
+    shippingAddress.street.trim() !== '' &&
+    shippingAddress.city.trim() !== '' &&
+    shippingAddress.state.trim() !== '' &&
+    shippingAddress.zip.trim() !== '';
 
   const saveOrderToDatabase = async (paymentId = null) => {
     const response = await fetch(`${BACKEND_URL}/api/orders`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
@@ -92,11 +93,13 @@ const Payment = () => {
         shippingAddress,
         paymentMethod,
         paymentId,
+        customerName: user?.name?.trim() || '',
       }),
     });
 
     if (!response.ok) {
-      throw new Error("Failed to save order to database");
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to save order to database');
     }
 
     const responseData = await response.json();
@@ -113,7 +116,12 @@ const Payment = () => {
     e.preventDefault();
 
     if (!isAuthenticated) {
-      navigate("/login");
+      navigate('/login');
+      return;
+    }
+
+    if (!user?.name?.trim()) {
+      setError('Please add your name in Personal Details before placing the order.');
       return;
     }
 
@@ -121,7 +129,7 @@ const Payment = () => {
     setError(null);
 
     try {
-      if (paymentMethod === "COD") {
+      if (paymentMethod === 'COD') {
         const data = await saveOrderToDatabase();
         if (clearCart) clearCart();
         setConfirmedOrderId(data.orderId);
@@ -130,25 +138,27 @@ const Payment = () => {
         return;
       }
 
-      if (paymentMethod === "ONLINE") {
+      if (paymentMethod === 'ONLINE') {
         const orderResponse = await fetch(
           `${BACKEND_URL}/api/payment/create-order`,
           {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ amount: finalTotal }),
-          },
+          }
         );
 
         const orderData = await orderResponse.json();
         if (!orderResponse.ok) {
-          throw new Error(orderData.error || "Failed to create payment order");
+          throw new Error(
+            orderData.error || 'Failed to create payment order'
+          );
         }
 
         const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
 
         if (!window.Razorpay) {
-          throw new Error("Razorpay checkout is not loaded yet");
+          throw new Error('Razorpay checkout is not loaded yet');
         }
 
         const options = {
@@ -156,30 +166,30 @@ const Payment = () => {
           amount: orderData.amount,
           currency: orderData.currency,
           name: "Creator's Desk",
-          description: "Premium Workspace Setup",
+          description: 'Premium Workspace Setup',
           order_id: orderData.id,
           handler: async (response) => {
             try {
               const verifyRes = await fetch(
                 `${BACKEND_URL}/api/payment/verify`,
                 {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     razorpay_order_id: response.razorpay_order_id,
                     razorpay_payment_id: response.razorpay_payment_id,
                     razorpay_signature: response.razorpay_signature,
                   }),
-                },
+                }
               );
 
               if (!verifyRes.ok) {
-                setError("Payment verification failed");
+                setError('Payment verification failed');
                 return;
               }
 
               const dbData = await saveOrderToDatabase(
-                response.razorpay_payment_id,
+                response.razorpay_payment_id
               );
 
               if (clearCart) clearCart();
@@ -187,12 +197,12 @@ const Payment = () => {
               setIsSuccess(true);
             } catch (err) {
               console.error(err);
-              setError("Error verifying payment.");
+              setError('Error verifying payment.');
             } finally {
               setIsProcessing(false);
             }
           },
-          theme: { color: "#000000" },
+          theme: { color: '#000000' },
           modal: {
             ondismiss: () => {
               setIsProcessing(false);
@@ -205,7 +215,7 @@ const Payment = () => {
       }
     } catch (err) {
       console.error(err);
-      setError("Something went wrong. Please try again.");
+      setError('Something went wrong. Please try again.');
       setIsProcessing(false);
     }
   };
@@ -248,7 +258,8 @@ const Payment = () => {
             Your transaction was successful.
           </p>
           <p className="text-xs font-medium tracking-widest text-creator-black uppercase mb-10">
-            Order ID: {confirmedOrderId?.slice(-6).toUpperCase() || "SYS-ERR"}
+            Order ID:{' '}
+            {confirmedOrderId?.slice(-6).toUpperCase() || 'SYS-ERR'}
           </p>
 
           <div className="flex flex-col gap-4">
@@ -260,7 +271,7 @@ const Payment = () => {
             </button>
 
             <button
-              onClick={() => navigate("/")}
+              onClick={() => navigate('/')}
               className="w-full py-4 bg-creator-black text-creator-white text-sm uppercase tracking-widest hover:bg-gray-900 transition-colors"
             >
               Return to Home
@@ -284,7 +295,7 @@ const Payment = () => {
         <div className="max-w-md w-full">
           <div className="flex items-center gap-4 mb-10">
             <button
-              onClick={() => navigate("/cart")}
+              onClick={() => navigate('/cart')}
               className="text-creator-muted hover:text-creator-black text-sm"
             >
               ← Back
@@ -376,9 +387,9 @@ const Payment = () => {
               <div className="space-y-4">
                 <label
                   className={`block border p-4 cursor-pointer transition-colors ${
-                    paymentMethod === "ONLINE"
-                      ? "border-creator-black bg-creator-surface"
-                      : "border-creator-border hover:border-gray-400"
+                    paymentMethod === 'ONLINE'
+                      ? 'border-creator-black bg-creator-surface'
+                      : 'border-creator-border hover:border-gray-400'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -386,7 +397,7 @@ const Payment = () => {
                       type="radio"
                       name="payment"
                       value="ONLINE"
-                      checked={paymentMethod === "ONLINE"}
+                      checked={paymentMethod === 'ONLINE'}
                       onChange={(e) => setPaymentMethod(e.target.value)}
                       className="accent-creator-black w-4 h-4"
                     />
@@ -398,9 +409,9 @@ const Payment = () => {
 
                 <label
                   className={`block border p-4 cursor-pointer transition-colors ${
-                    paymentMethod === "COD"
-                      ? "border-creator-black bg-creator-surface"
-                      : "border-creator-border hover:border-gray-400"
+                    paymentMethod === 'COD'
+                      ? 'border-creator-black bg-creator-surface'
+                      : 'border-creator-border hover:border-gray-400'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -408,7 +419,7 @@ const Payment = () => {
                       type="radio"
                       name="payment"
                       value="COD"
-                      checked={paymentMethod === "COD"}
+                      checked={paymentMethod === 'COD'}
                       onChange={(e) => setPaymentMethod(e.target.value)}
                       className="accent-creator-black w-4 h-4"
                     />
@@ -419,7 +430,7 @@ const Payment = () => {
                 </label>
               </div>
 
-              {paymentMethod === "COD" && (
+              {paymentMethod === 'COD' && (
                 <div className="pt-4 border-t border-creator-border mt-6">
                   <p className="text-sm text-creator-muted leading-relaxed">
                     You will pay for your order in cash upon delivery. Please
@@ -431,19 +442,21 @@ const Payment = () => {
               <button
                 type="submit"
                 disabled={
-                  isProcessing || orderItems.length === 0 || !isShippingValid
+                  isProcessing ||
+                  orderItems.length === 0 ||
+                  !isShippingValid
                 }
                 className={`w-full py-5 mt-8 text-sm uppercase tracking-widest transition-colors ${
                   isProcessing || orderItems.length === 0 || !isShippingValid
-                    ? "bg-creator-muted text-white cursor-not-allowed"
-                    : "bg-creator-black text-creator-white hover:bg-gray-900"
+                    ? 'bg-creator-muted text-white cursor-not-allowed'
+                    : 'bg-creator-black text-creator-white hover:bg-gray-900'
                 }`}
               >
                 {isProcessing
-                  ? "Processing..."
-                  : paymentMethod === "ONLINE"
-                    ? "Proceed to Razorpay"
-                    : "Place Order"}
+                  ? 'Processing...'
+                  : paymentMethod === 'ONLINE'
+                  ? 'Proceed to Razorpay'
+                  : 'Place Order'}
               </button>
             </form>
           )}
@@ -459,14 +472,14 @@ const Payment = () => {
           <div className="flex justify-between items-center text-sm mb-4">
             <span className="text-creator-muted">Items Total</span>
             <span className="font-medium">
-              ${cartTotal?.toFixed(2) || "0.00"}
+              ₹{cartTotal?.toFixed(2) || '0.00'}
             </span>
           </div>
 
           <div className="flex justify-between items-center text-sm mb-8">
             <span className="text-creator-muted">Shipping</span>
             <span className="font-medium">
-              {cartTotal > 150 ? "Free" : "$15.00"}
+              ₹20.00
             </span>
           </div>
 
@@ -475,7 +488,7 @@ const Payment = () => {
               Total
             </span>
             <span className="text-2xl font-medium text-creator-black">
-              ${finalTotal?.toFixed(2) || "0.00"}
+              ₹{finalTotal?.toFixed(2) || '0.00'}
             </span>
           </div>
         </div>

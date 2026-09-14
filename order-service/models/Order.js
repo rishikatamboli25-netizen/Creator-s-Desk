@@ -47,6 +47,18 @@ const orderSchema = new mongoose.Schema(
       default: null,
     },
 
+    customerName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    shippingCharge: {
+      type: Number,
+      required: true,
+      default: 20,
+    },
+
     status: {
       type: String,
       enum: ['Processing', 'Shipped', 'Delivered', 'Cancelled'],
@@ -59,6 +71,12 @@ const orderSchema = new mongoose.Schema(
     },
 
     document: {
+      invoiceNumber: {
+        type: String,
+        unique: true,
+        sparse: true,
+        default: null,
+      },
       url: {
         type: String,
         default: null,
