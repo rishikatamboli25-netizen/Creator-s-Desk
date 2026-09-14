@@ -9,7 +9,12 @@ const Payment = () => {
   const { cart, cartItems, cartTotal, clearCart } = useCart();
   const orderItems = cartItems || cart || [];
 
-  const { token, user, isAuthenticated } = useAuth();
+  const {
+    token,
+    user,
+    isAuthenticated,
+    refreshUser,
+  } = useAuth();
 
   const [paymentMethod, setPaymentMethod] = useState('ONLINE');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -28,7 +33,7 @@ const Payment = () => {
   const [showInvoice, setShowInvoice] = useState(false);
   const [completedOrderData, setCompletedOrderData] = useState(null);
 
-  // Fixed shipping charge for all orders
+  // Fixed shipping charge for every order
   const SHIPPING_CHARGE = 20;
 
   const finalTotal = (Number(cartTotal) || 0) + SHIPPING_CHARGE;
@@ -98,8 +103,13 @@ const Payment = () => {
       throw new Error('Authentication required. Please log in again.');
     }
 
-    // Name comes directly from the authenticated user's account.
-    const customerName = user?.name?.trim() || '';
+    /*
+     * Get the latest profile from AuthContext.
+     * This prevents Payment.jsx from relying on stale localStorage/user state.
+     */
+    const latestUser = await refreshUser();
+    const customerName =
+      latestUser?.name?.trim() || user?.name?.trim() || '';
 
     if (!customerName) {
       throw new Error(
@@ -121,7 +131,7 @@ const Payment = () => {
           quantity: Number(item.quantity) || 1,
         })),
 
-        // Final amount already includes the fixed ₹20 shipping charge.
+        // Includes the fixed ₹20 shipping charge
         totalAmount: finalTotal,
 
         shippingAddress: {
@@ -134,7 +144,7 @@ const Payment = () => {
         paymentMethod,
         paymentId,
 
-        // Taken directly from the authenticated user account.
+        // Taken from the authenticated user's profile
         customerName,
       }),
     });
@@ -160,13 +170,6 @@ const Payment = () => {
 
     if (!isAuthenticated) {
       navigate('/login');
-      return;
-    }
-
-    if (!user?.name?.trim()) {
-      setError(
-        'Please add your name in Personal Details before placing the order.'
-      );
       return;
     }
 
