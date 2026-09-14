@@ -8,25 +8,29 @@ const Payment = () => {
   const navigate = useNavigate();
   const { cart, cartItems, cartTotal, clearCart } = useCart();
   const orderItems = cartItems || cart || [];
+
   const { token, user, isAuthenticated } = useAuth();
 
   const [paymentMethod, setPaymentMethod] = useState('ONLINE');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+
   const [shippingAddress, setShippingAddress] = useState({
     street: '',
     city: '',
     state: '',
     zip: '',
   });
+
   const [isSuccess, setIsSuccess] = useState(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [completedOrderData, setCompletedOrderData] = useState(null);
 
   const SHIPPING_CHARGE = 20;
-  const finalTotal = cartTotal + SHIPPING_CHARGE;
+  const finalTotal = (Number(cartTotal) || 0) + SHIPPING_CHARGE;
+
   const BACKEND_URL =
     import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
@@ -34,10 +38,13 @@ const Payment = () => {
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
+
     document.body.appendChild(script);
 
     return () => {
-      document.body.removeChild(script);
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
     };
   }, []);
 
@@ -50,17 +57,25 @@ const Payment = () => {
 
       try {
         const response = await fetch(`${BACKEND_URL}/api/orders/me`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         });
 
         if (response.ok) {
           const orders = await response.json();
+
           if (orders?.length > 0 && orders[0].shippingAddress) {
-            setShippingAddress(orders[0].shippingAddress);
+            setShippingAddress({
+              street: orders[0].shippingAddress.street || '',
+              city: orders[0].shippingAddress.city || '',
+              state: orders[0].shippingAddress.state || '',
+              zip: orders[0].shippingAddress.zip || '',
+            });
           }
         }
       } catch (err) {
-        console.error('Failed to fetch order history');
+        console.error('Failed to fetch order history:', err);
       } finally {
         setIsLoadingHistory(false);
       }
@@ -75,34 +90,59 @@ const Payment = () => {
     shippingAddress.state.trim() !== '' &&
     shippingAddress.zip.trim() !== '';
 
+  const customerName = user?.name?.trim() || '';
+
   const saveOrderToDatabase = async (paymentId = null) => {
+    if (!token) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+
+    if (!customerName) {
+      throw new Error(
+        'Please add your name in Personal Details before placing the order.'
+      );
+    }
+
+    const payload = {
+      items: orderItems.map((item) => ({
+        productId: item.id || item._id,
+        name: item.name,
+        price: Number(item.price) || 0,
+        quantity: Number(item.quantity) || 1,
+      })),
+
+      // Matches Order Service:
+      // totalAmount + shippingCharge = finalTotal
+      totalAmount: finalTotal,
+
+      shippingAddress: {
+        street: shippingAddress.street.trim(),
+        city: shippingAddress.city.trim(),
+        state: shippingAddress.state.trim(),
+        zip: shippingAddress.zip.trim(),
+      },
+
+      paymentMethod,
+      paymentId,
+      customerName,
+    };
+
     const response = await fetch(`${BACKEND_URL}/api/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        items: orderItems.map((item) => ({
-          productId: item.id || item._id,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity || 1,
-        })),
-        totalAmount: finalTotal,
-        shippingAddress,
-        paymentMethod,
-        paymentId,
-        customerName: user?.name?.trim() || '',
-      }),
+      body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to save order to database');
-    }
+    const responseData = await response.json().catch(() => ({}));
 
-    const responseData = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        responseData.error || 'Failed to save order to database'
+      );
+    }
 
     setCompletedOrderData({
       orderId: responseData.orderId,
@@ -120,8 +160,20 @@ const Payment = () => {
       return;
     }
 
-    if (!user?.name?.trim()) {
-      setError('Please add your name in Personal Details before placing the order.');
+    if (!customerName) {
+      setError(
+        'Please add your name in Personal Details before placing the order.'
+      );
+      return;
+    }
+
+    if (!isShippingValid) {
+      setError('Please complete your shipping address.');
+      return;
+    }
+
+    if (!orderItems.length) {
+      setError('Your cart is empty.');
       return;
     }
 
@@ -129,26 +181,42 @@ const Payment = () => {
     setError(null);
 
     try {
+      // -----------------------------
+      // CASH ON DELIVERY
+      // -----------------------------
       if (paymentMethod === 'COD') {
         const data = await saveOrderToDatabase();
-        if (clearCart) clearCart();
+
+        if (clearCart) {
+          clearCart();
+        }
+
         setConfirmedOrderId(data.orderId);
         setIsSuccess(true);
         setIsProcessing(false);
+
         return;
       }
 
+      // -----------------------------
+      // ONLINE PAYMENT
+      // -----------------------------
       if (paymentMethod === 'ONLINE') {
         const orderResponse = await fetch(
           `${BACKEND_URL}/api/payment/create-order`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amount: finalTotal }),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              amount: finalTotal,
+            }),
           }
         );
 
-        const orderData = await orderResponse.json();
+        const orderData = await orderResponse.json().catch(() => ({}));
+
         if (!orderResponse.ok) {
           throw new Error(
             orderData.error || 'Failed to create payment order'
@@ -157,8 +225,12 @@ const Payment = () => {
 
         const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY_ID;
 
+        if (!razorpayKey) {
+          throw new Error('Razorpay key is not configured.');
+        }
+
         if (!window.Razorpay) {
-          throw new Error('Razorpay checkout is not loaded yet');
+          throw new Error('Razorpay checkout is not loaded yet.');
         }
 
         const options = {
@@ -168,13 +240,16 @@ const Payment = () => {
           name: "Creator's Desk",
           description: 'Premium Workspace Setup',
           order_id: orderData.id,
+
           handler: async (response) => {
             try {
               const verifyRes = await fetch(
                 `${BACKEND_URL}/api/payment/verify`,
                 {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
                   body: JSON.stringify({
                     razorpay_order_id: response.razorpay_order_id,
                     razorpay_payment_id: response.razorpay_payment_id,
@@ -183,26 +258,42 @@ const Payment = () => {
                 }
               );
 
+              const verifyData = await verifyRes.json().catch(() => ({}));
+
               if (!verifyRes.ok) {
-                setError('Payment verification failed');
-                return;
+                throw new Error(
+                  verifyData.error || 'Payment verification failed'
+                );
               }
 
               const dbData = await saveOrderToDatabase(
                 response.razorpay_payment_id
               );
 
-              if (clearCart) clearCart();
-              setConfirmedOrderId(dbData.orderId || response.razorpay_order_id);
+              if (clearCart) {
+                clearCart();
+              }
+
+              setConfirmedOrderId(
+                dbData.orderId || response.razorpay_order_id
+              );
+
               setIsSuccess(true);
             } catch (err) {
-              console.error(err);
-              setError('Error verifying payment.');
+              console.error('Online payment completion error:', err);
+              setError(
+                err.message ||
+                  'Payment succeeded, but order confirmation failed.'
+              );
             } finally {
               setIsProcessing(false);
             }
           },
-          theme: { color: '#000000' },
+
+          theme: {
+            color: '#000000',
+          },
+
           modal: {
             ondismiss: () => {
               setIsProcessing(false);
@@ -214,12 +305,19 @@ const Payment = () => {
         razorpayInstance.open();
       }
     } catch (err) {
-      console.error(err);
-      setError('Something went wrong. Please try again.');
+      console.error('Checkout error:', err);
+
+      setError(
+        err.message || 'Something went wrong. Please try again.'
+      );
+
       setIsProcessing(false);
     }
   };
 
+  // ----------------------------------
+  // ORDER SUCCESS
+  // ----------------------------------
   if (isSuccess) {
     return (
       <main className="min-h-[calc(100vh-89px)] bg-creator-surface flex flex-col items-center justify-center p-8 relative">
@@ -239,7 +337,10 @@ const Payment = () => {
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
-                style={{ strokeDasharray: 50, strokeDashoffset: 50 }}
+                style={{
+                  strokeDasharray: 50,
+                  strokeDashoffset: 50,
+                }}
               >
                 <path
                   strokeLinecap="round"
@@ -254,9 +355,11 @@ const Payment = () => {
           <h1 className="text-3xl font-light tracking-tight text-creator-black mb-4">
             Order Confirmed
           </h1>
+
           <p className="text-creator-muted text-sm leading-relaxed mb-2">
             Your transaction was successful.
           </p>
+
           <p className="text-xs font-medium tracking-widest text-creator-black uppercase mb-10">
             Order ID:{' '}
             {confirmedOrderId?.slice(-6).toUpperCase() || 'SYS-ERR'}
@@ -282,6 +385,9 @@ const Payment = () => {
     );
   }
 
+  // ----------------------------------
+  // CHECKOUT PAGE
+  // ----------------------------------
   return (
     <div className="min-h-[calc(100vh-89px)] bg-creator-white flex flex-col md:flex-row">
       <div className="flex-1 flex flex-col justify-center px-8 md:px-24 py-12">
@@ -300,8 +406,12 @@ const Payment = () => {
             >
               ← Back
             </button>
+
             <span className="text-creator-muted text-sm">/</span>
-            <h1 className="text-xl font-light tracking-tight">Checkout</h1>
+
+            <h1 className="text-xl font-light tracking-tight">
+              Checkout
+            </h1>
           </div>
 
           {error && (
@@ -316,6 +426,22 @@ const Payment = () => {
             </div>
           ) : (
             <form onSubmit={handlePlaceOrder} className="space-y-6">
+              {/* CUSTOMER */}
+              <div className="space-y-2 mb-8">
+                <h2 className="text-sm font-bold uppercase tracking-widest mb-4 text-creator-black">
+                  Customer
+                </h2>
+
+                <div className="w-full border border-creator-border p-4 text-sm bg-gray-50">
+                  {customerName || 'Name not available'}
+                </div>
+
+                <p className="text-xs text-creator-muted">
+                  Invoice name is taken from your Personal Details.
+                </p>
+              </div>
+
+              {/* SHIPPING */}
               <div className="space-y-4 mb-8">
                 <h2 className="text-sm font-bold uppercase tracking-widest mb-4 text-creator-black">
                   Shipping Details
@@ -380,6 +506,7 @@ const Payment = () => {
                 </div>
               </div>
 
+              {/* PAYMENT */}
               <h2 className="text-sm font-bold uppercase tracking-widest mb-4 text-creator-black">
                 Payment Method
               </h2>
@@ -398,9 +525,12 @@ const Payment = () => {
                       name="payment"
                       value="ONLINE"
                       checked={paymentMethod === 'ONLINE'}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      onChange={(e) =>
+                        setPaymentMethod(e.target.value)
+                      }
                       className="accent-creator-black w-4 h-4"
                     />
+
                     <span className="text-sm font-medium">
                       Pay with Cards, UPI or Netbanking (Razorpay)
                     </span>
@@ -420,9 +550,12 @@ const Payment = () => {
                       name="payment"
                       value="COD"
                       checked={paymentMethod === 'COD'}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      onChange={(e) =>
+                        setPaymentMethod(e.target.value)
+                      }
                       className="accent-creator-black w-4 h-4"
                     />
+
                     <span className="text-sm font-medium">
                       Cash on Delivery (COD)
                     </span>
@@ -433,8 +566,8 @@ const Payment = () => {
               {paymentMethod === 'COD' && (
                 <div className="pt-4 border-t border-creator-border mt-6">
                   <p className="text-sm text-creator-muted leading-relaxed">
-                    You will pay for your order in cash upon delivery. Please
-                    ensure you have the exact amount available.
+                    You will pay for your order in cash upon delivery.
+                    Please ensure you have the exact amount available.
                   </p>
                 </div>
               )}
@@ -444,10 +577,14 @@ const Payment = () => {
                 disabled={
                   isProcessing ||
                   orderItems.length === 0 ||
-                  !isShippingValid
+                  !isShippingValid ||
+                  !customerName
                 }
                 className={`w-full py-5 mt-8 text-sm uppercase tracking-widest transition-colors ${
-                  isProcessing || orderItems.length === 0 || !isShippingValid
+                  isProcessing ||
+                  orderItems.length === 0 ||
+                  !isShippingValid ||
+                  !customerName
                     ? 'bg-creator-muted text-white cursor-not-allowed'
                     : 'bg-creator-black text-creator-white hover:bg-gray-900'
                 }`}
@@ -463,6 +600,7 @@ const Payment = () => {
         </div>
       </div>
 
+      {/* ORDER SUMMARY */}
       <div className="hidden md:flex md:w-[400px] lg:w-[500px] bg-creator-surface border-l border-creator-border flex-col p-12 relative">
         <div className="sticky top-12">
           <h2 className="text-sm font-bold uppercase tracking-widest mb-8 text-creator-black">
@@ -470,14 +608,20 @@ const Payment = () => {
           </h2>
 
           <div className="flex justify-between items-center text-sm mb-4">
-            <span className="text-creator-muted">Items Total</span>
+            <span className="text-creator-muted">
+              Items Total
+            </span>
+
             <span className="font-medium">
-              ₹{cartTotal?.toFixed(2) || '0.00'}
+              ₹{(Number(cartTotal) || 0).toFixed(2)}
             </span>
           </div>
 
           <div className="flex justify-between items-center text-sm mb-8">
-            <span className="text-creator-muted">Shipping</span>
+            <span className="text-creator-muted">
+              Shipping
+            </span>
+
             <span className="font-medium">
               ₹20.00
             </span>
@@ -487,8 +631,9 @@ const Payment = () => {
             <span className="text-2xl font-light text-creator-black">
               Total
             </span>
+
             <span className="text-2xl font-medium text-creator-black">
-              ₹{finalTotal?.toFixed(2) || '0.00'}
+              ₹{finalTotal.toFixed(2)}
             </span>
           </div>
         </div>
