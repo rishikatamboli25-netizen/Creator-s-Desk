@@ -28,7 +28,9 @@ const Payment = () => {
   const [showInvoice, setShowInvoice] = useState(false);
   const [completedOrderData, setCompletedOrderData] = useState(null);
 
+  // Fixed shipping charge for all orders
   const SHIPPING_CHARGE = 20;
+
   const finalTotal = (Number(cartTotal) || 0) + SHIPPING_CHARGE;
 
   const BACKEND_URL =
@@ -36,6 +38,7 @@ const Payment = () => {
 
   useEffect(() => {
     const script = document.createElement('script');
+
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
 
@@ -90,12 +93,13 @@ const Payment = () => {
     shippingAddress.state.trim() !== '' &&
     shippingAddress.zip.trim() !== '';
 
-  const customerName = user?.name?.trim() || '';
-
   const saveOrderToDatabase = async (paymentId = null) => {
     if (!token) {
       throw new Error('Authentication required. Please log in again.');
     }
+
+    // Name comes directly from the authenticated user's account.
+    const customerName = user?.name?.trim() || '';
 
     if (!customerName) {
       throw new Error(
@@ -103,37 +107,36 @@ const Payment = () => {
       );
     }
 
-    const payload = {
-      items: orderItems.map((item) => ({
-        productId: item.id || item._id,
-        name: item.name,
-        price: Number(item.price) || 0,
-        quantity: Number(item.quantity) || 1,
-      })),
-
-      // Matches Order Service:
-      // totalAmount + shippingCharge = finalTotal
-      totalAmount: finalTotal,
-
-      shippingAddress: {
-        street: shippingAddress.street.trim(),
-        city: shippingAddress.city.trim(),
-        state: shippingAddress.state.trim(),
-        zip: shippingAddress.zip.trim(),
-      },
-
-      paymentMethod,
-      paymentId,
-      customerName,
-    };
-
     const response = await fetch(`${BACKEND_URL}/api/orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        items: orderItems.map((item) => ({
+          productId: item.id || item._id,
+          name: item.name,
+          price: Number(item.price) || 0,
+          quantity: Number(item.quantity) || 1,
+        })),
+
+        // Final amount already includes the fixed ₹20 shipping charge.
+        totalAmount: finalTotal,
+
+        shippingAddress: {
+          street: shippingAddress.street.trim(),
+          city: shippingAddress.city.trim(),
+          state: shippingAddress.state.trim(),
+          zip: shippingAddress.zip.trim(),
+        },
+
+        paymentMethod,
+        paymentId,
+
+        // Taken directly from the authenticated user account.
+        customerName,
+      }),
     });
 
     const responseData = await response.json().catch(() => ({}));
@@ -160,7 +163,7 @@ const Payment = () => {
       return;
     }
 
-    if (!customerName) {
+    if (!user?.name?.trim()) {
       setError(
         'Please add your name in Personal Details before placing the order.'
       );
@@ -281,6 +284,7 @@ const Payment = () => {
               setIsSuccess(true);
             } catch (err) {
               console.error('Online payment completion error:', err);
+
               setError(
                 err.message ||
                   'Payment succeeded, but order confirmation failed.'
@@ -302,6 +306,7 @@ const Payment = () => {
         };
 
         const razorpayInstance = new window.Razorpay(options);
+
         razorpayInstance.open();
       }
     } catch (err) {
@@ -426,22 +431,6 @@ const Payment = () => {
             </div>
           ) : (
             <form onSubmit={handlePlaceOrder} className="space-y-6">
-              {/* CUSTOMER */}
-              <div className="space-y-2 mb-8">
-                <h2 className="text-sm font-bold uppercase tracking-widest mb-4 text-creator-black">
-                  Customer
-                </h2>
-
-                <div className="w-full border border-creator-border p-4 text-sm bg-gray-50">
-                  {customerName || 'Name not available'}
-                </div>
-
-                <p className="text-xs text-creator-muted">
-                  Invoice name is taken from your Personal Details.
-                </p>
-              </div>
-
-              {/* SHIPPING */}
               <div className="space-y-4 mb-8">
                 <h2 className="text-sm font-bold uppercase tracking-widest mb-4 text-creator-black">
                   Shipping Details
@@ -506,7 +495,6 @@ const Payment = () => {
                 </div>
               </div>
 
-              {/* PAYMENT */}
               <h2 className="text-sm font-bold uppercase tracking-widest mb-4 text-creator-black">
                 Payment Method
               </h2>
@@ -577,14 +565,12 @@ const Payment = () => {
                 disabled={
                   isProcessing ||
                   orderItems.length === 0 ||
-                  !isShippingValid ||
-                  !customerName
+                  !isShippingValid
                 }
                 className={`w-full py-5 mt-8 text-sm uppercase tracking-widest transition-colors ${
                   isProcessing ||
                   orderItems.length === 0 ||
-                  !isShippingValid ||
-                  !customerName
+                  !isShippingValid
                     ? 'bg-creator-muted text-white cursor-not-allowed'
                     : 'bg-creator-black text-creator-white hover:bg-gray-900'
                 }`}
@@ -600,7 +586,6 @@ const Payment = () => {
         </div>
       </div>
 
-      {/* ORDER SUMMARY */}
       <div className="hidden md:flex md:w-[400px] lg:w-[500px] bg-creator-surface border-l border-creator-border flex-col p-12 relative">
         <div className="sticky top-12">
           <h2 className="text-sm font-bold uppercase tracking-widest mb-8 text-creator-black">
