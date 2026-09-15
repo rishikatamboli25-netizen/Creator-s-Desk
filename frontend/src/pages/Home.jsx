@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import ProductCardSkeleton from '../components/Loading/ProductCardSkeleton';
+import { buildCategoryUrl } from '../utils/routeTokens';
 
 const Home = () => {
   const [products, setProducts] = useState([]);
@@ -62,17 +63,17 @@ const Home = () => {
           <h2 className="text-2xl font-light tracking-tight mb-10">Explore by Category</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
             
-            <Link to="/category/desk-organizers" className="bg-white border border-creator-border p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            <Link to={buildCategoryUrl("desk-organizers")} className="bg-white border border-creator-border p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <h3 className="text-lg font-medium mb-2">Desk Organizers</h3>
               <p className="text-sm text-creator-muted">Machined aluminum and solid wood foundations.</p>
             </Link>
             
-            <Link to="/category/keycaps" className="bg-white border border-creator-border p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            <Link to={buildCategoryUrl("keycaps")} className="bg-white border border-creator-border p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <h3 className="text-lg font-medium mb-2">Artisan Keycaps</h3>
               <p className="text-sm text-creator-muted">Hand-poured resin, ceramic, and brass accents.</p>
             </Link>
             
-            <Link to="/category/tech" className="bg-white border border-creator-border p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+            <Link to={buildCategoryUrl("tech")} className="bg-white border border-creator-border p-8 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <h3 className="text-lg font-medium mb-2">Creator Tech</h3>
               <p className="text-sm text-creator-muted">Reference displays, optics, and peripherals.</p>
             </Link>
@@ -88,7 +89,7 @@ const Home = () => {
             <h2 className="text-3xl font-light tracking-tight">Desk Essentials</h2>
             <p className="mt-2 text-creator-muted">The core pillars of a clean workspace.</p>
           </div>
-          <Link to="/category/desk-organizers" className="hidden sm:block text-sm font-medium hover:text-creator-muted underline underline-offset-4 mb-1">
+          <Link to={buildCategoryUrl("desk-organizers")} className="hidden sm:block text-sm font-medium hover:text-creator-muted underline underline-offset-4 mb-1">
             View Collection
           </Link>
         </div>

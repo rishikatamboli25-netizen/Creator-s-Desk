@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import { useAuth } from '../context/AuthContext'; 
+import { useAuth } from '../context/AuthContext';
+import { buildCategoryUrl } from '../utils/routeTokens'; 
 
 const Navbar = () => {
   const { cartCount, toggleCart } = useCart();
@@ -74,10 +75,10 @@ const Navbar = () => {
       </Link>
 
       <div className={`hidden md:flex gap-8 text-sm font-medium tracking-wide transition-opacity duration-300 ${isSearchOpen ? 'opacity-0 pointer-events-none absolute left-1/2 -translate-x-1/2' : 'opacity-100 text-creator-muted absolute left-1/2 -translate-x-1/2'}`}>
-        <Link to="/category/desk-organizers" className="hover:text-creator-black transition-colors">Organizers</Link>
-        <Link to="/category/keycaps" className="hover:text-creator-black transition-colors">Keycaps</Link>
-        <Link to="/category/accessories" className="hover:text-creator-black transition-colors">Accessories</Link>
-        <Link to="/category/tech" className="hover:text-creator-black transition-colors">Tech</Link>
+        <Link to={buildCategoryUrl("desk-organizers")} className="hover:text-creator-black transition-colors">Organizers</Link>
+        <Link to={buildCategoryUrl("keycaps")} className="hover:text-creator-black transition-colors">Keycaps</Link>
+        <Link to={buildCategoryUrl("accessories")} className="hover:text-creator-black transition-colors">Accessories</Link>
+        <Link to={buildCategoryUrl("tech")} className="hover:text-creator-black transition-colors">Tech</Link>
       </div>
 
       <div className="flex items-center gap-5 text-creator-black z-20 ml-auto">

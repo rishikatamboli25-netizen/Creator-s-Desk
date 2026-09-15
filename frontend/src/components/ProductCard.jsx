@@ -1,10 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { buildProductUrl } from '../utils/routeTokens';
 
 const ProductCard = ({ product }) => {
   return (
     // Added product.id to the fallback chain
-    <Link to={`/product/${product.slug || product._id || product.id}`} className="group cursor-pointer block">
+    <Link to={buildProductUrl(product)} className="group cursor-pointer block">
       <div className="aspect-square bg-creator-surface overflow-hidden mb-6">
         <img 
           src={product.image || product.assets?.thumbnailUrl || 'https://images.unsplash.com/photo-1527443154391-507e9dc6c5cc?auto=format&fit=crop&q=80&w=800'} 

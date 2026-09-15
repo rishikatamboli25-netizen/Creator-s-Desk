@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { buildCheckoutUrl } from '../utils/routeTokens';
 
 const OrderDetails = () => {
   const navigate = useNavigate();
@@ -23,7 +24,7 @@ const OrderDetails = () => {
     e.preventDefault();
     // In a real app, we would save this to context or state management here
     console.log("Shipping Details Saved:", formData);
-    navigate('/payment');
+    navigate(buildCheckoutUrl());
   };
 
   return (

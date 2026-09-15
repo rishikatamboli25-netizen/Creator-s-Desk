@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { products } from '../data/products';
+import { buildCategoryUrl } from '../utils/routeTokens';
 
 const CategoryPage = () => {
   const { categoryName } = useParams();
@@ -90,10 +91,10 @@ const CategoryPage = () => {
           <div className="pt-8 border-t border-creator-border">
             <h3 className="text-xs font-bold uppercase tracking-widest mb-4">All Categories</h3>
             <ul className="space-y-3 text-sm text-creator-muted">
-              <li><Link to="/category/desk-organizers" className="hover:text-creator-black transition-colors">Desk Organizers</Link></li>
-              <li><Link to="/category/keycaps" className="hover:text-creator-black transition-colors">Keycaps</Link></li>
-              <li><Link to="/category/accessories" className="hover:text-creator-black transition-colors">Accessories</Link></li>
-              <li><Link to="/category/tech" className="hover:text-creator-black transition-colors">Tech</Link></li>
+              <li><Link to={buildCategoryUrl("desk-organizers")} className="hover:text-creator-black transition-colors">Desk Organizers</Link></li>
+              <li><Link to={buildCategoryUrl("keycaps")} className="hover:text-creator-black transition-colors">Keycaps</Link></li>
+              <li><Link to={buildCategoryUrl("accessories")} className="hover:text-creator-black transition-colors">Accessories</Link></li>
+              <li><Link to={buildCategoryUrl("tech")} className="hover:text-creator-black transition-colors">Tech</Link></li>
             </ul>
           </div>
         </div>

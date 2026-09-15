@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { buildCategoryUrl } from '../utils/routeTokens';
 
 const Footer = () => {
   return (
@@ -23,10 +24,10 @@ const Footer = () => {
           <div>
             <h4 className="text-xs font-bold uppercase tracking-widest mb-6 text-creator-black">Shop</h4>
             <ul className="space-y-4 text-sm text-creator-muted">
-              <li><Link to="/category/desk-organizers" className="hover:text-creator-black transition-colors">Desk Organizers</Link></li>
-              <li><Link to="/category/keycaps" className="hover:text-creator-black transition-colors">Artisan Keycaps</Link></li>
-              <li><Link to="/category/accessories" className="hover:text-creator-black transition-colors">Accessories</Link></li>
-              <li><Link to="/category/tech" className="hover:text-creator-black transition-colors">Creator Tech</Link></li>
+              <li><Link to={buildCategoryUrl("desk-organizers")} className="hover:text-creator-black transition-colors">Desk Organizers</Link></li>
+              <li><Link to={buildCategoryUrl("keycaps")} className="hover:text-creator-black transition-colors">Artisan Keycaps</Link></li>
+              <li><Link to={buildCategoryUrl("accessories")} className="hover:text-creator-black transition-colors">Accessories</Link></li>
+              <li><Link to={buildCategoryUrl("tech")} className="hover:text-creator-black transition-colors">Creator Tech</Link></li>
             </ul>
           </div>
 

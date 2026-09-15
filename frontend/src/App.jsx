@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 
 // Global Contexts
@@ -31,6 +31,26 @@ import Wishlist from './pages/Wishlist';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
 
+import {
+  buildCategoryUrl,
+  buildCheckoutUrl,
+  buildProductUrl,
+} from './utils/routeTokens';
+
+function LegacyProductRedirect() {
+  const { slug } = useParams();
+  return <Navigate to={buildProductUrl(slug)} replace />;
+}
+
+function LegacyCategoryRedirect() {
+  const { categoryName } = useParams();
+  return <Navigate to={buildCategoryUrl(categoryName)} replace />;
+}
+
+function LegacyPaymentRedirect() {
+  return <Navigate to={buildCheckoutUrl()} replace />;
+}
+
 function App() {
   const location = useLocation();
 
@@ -39,92 +59,55 @@ function App() {
   // Hide Navbar/Cart during checkout
   const isCheckoutFlow =
     location.pathname === '/order' ||
+    location.pathname === '/checkout' ||
     location.pathname === '/payment';
 
   return (
     <AuthProvider>
       <div className="min-h-screen bg-creator-white text-creator-black font-sans relative selection:bg-creator-black selection:text-white">
-
         {!isCheckoutFlow && <Navbar />}
         {!isCheckoutFlow && <CartDrawer />}
 
         <Routes>
-
           {/* Core Shopping */}
           <Route path="/" element={<Home />} />
 
-          {/* Categories */}
-          <Route
-            path="/category/:categoryName"
-            element={<Category />}
-          />
+          {/* Current canonical category route */}
+          <Route path="/c" element={<Category />} />
 
-          <Route
-            path="/search"
-            element={<Search />}
-          />
+          {/* Current canonical product route */}
+          <Route path="/p" element={<ProductDetail />} />
 
-          <Route
-            path="/product/:slug"
-            element={<ProductDetail />}
-          />
+          {/* Legacy category/product URLs redirect to canonical URLs */}
+          <Route path="/category/:categoryName" element={<LegacyCategoryRedirect />} />
+          <Route path="/product/:slug" element={<LegacyProductRedirect />} />
 
-          <Route
-            path="/wishlist"
-            element={<Wishlist />}
-          />
+          <Route path="/search" element={<Search />} />
+          <Route path="/wishlist" element={<Wishlist />} />
 
           {/* Checkout */}
-          <Route
-            path="/order"
-            element={<OrderDetails />}
-          />
-
-          <Route
-            path="/payment"
-            element={<Payment />}
-          />
+          <Route path="/order" element={<OrderDetails />} />
+          <Route path="/checkout" element={<Payment />} />
+          <Route path="/payment" element={<LegacyPaymentRedirect />} />
 
           {/* User */}
-          <Route
-            path="/login"
-            element={<Login />}
-          />
-
-          <Route
-            path="/profile"
-            element={<Profile />}
-          />
-
-          <Route
-            path="/contact"
-            element={<Contact />}
-          />
-
-          <Route
-            path="/help"
-            element={<Help />}
-          />
-
+          <Route path="/login" element={<Login />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/help" element={<Help />} />
         </Routes>
 
         {!isCheckoutFlow && <Footer />}
 
-        {/* ---------- AI Assistant ---------- */}
-
         {!isCheckoutFlow && (
           <>
-            <AIAssistantButton
-              onClick={() => setOpenAI(true)}
-            />
-
+            <AIAssistantButton onClick={() => setOpenAI(true)} />
             <AIAssistantDrawer
               open={openAI}
               onClose={() => setOpenAI(false)}
             />
           </>
         )}
-
       </div>
     </AuthProvider>
   );

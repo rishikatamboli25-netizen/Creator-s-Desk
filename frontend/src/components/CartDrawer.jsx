@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useCart } from "../context/CartContext";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { buildCheckoutUrl } from '../utils/routeTokens';
 
 // Dedicated Skeleton for Cart Rows
 const CartItemSkeleton = () => (
@@ -48,9 +49,9 @@ const CartDrawer = () => {
     toggleCart(); 
     
     if (isAuthenticated) {
-      navigate('/payment');
+      navigate(buildCheckoutUrl());
     } else {
-      navigate('/login', { state: { returnTo: '/payment' } });
+      navigate('/login', { state: { returnTo: buildCheckoutUrl() } });
     }
   };
 

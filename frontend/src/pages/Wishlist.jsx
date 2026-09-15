@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { products } from '../data/products';
+import { buildProductUrl } from '../utils/routeTokens';
 
 // Dedicated Skeleton for Wishlist Cards
 const WishlistCardSkeleton = () => (
@@ -94,7 +95,7 @@ const Wishlist = () => {
                 &times;
               </button>
 
-              <Link to={`/product/${product.id}`} className="aspect-square overflow-hidden border-b border-creator-border">
+              <Link to={buildProductUrl(product)} className="aspect-square overflow-hidden border-b border-creator-border">
                 <img 
                   src={product.image} 
                   alt={product.name} 
@@ -104,7 +105,7 @@ const Wishlist = () => {
               
               <div className="p-6 flex flex-col flex-1 bg-creator-white">
                 <span className="text-xs uppercase tracking-widest text-creator-muted mb-2">{product.category}</span>
-                <Link to={`/product/${product.id}`}>
+                <Link to={buildProductUrl(product)}>
                   <h3 className="text-sm font-medium truncate hover:underline underline-offset-4">{product.name}</h3>
                 </Link>
                 <span className="text-sm font-medium mt-2 mb-6">${product.price}</span>

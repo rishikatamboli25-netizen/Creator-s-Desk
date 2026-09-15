@@ -1,23 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import ProductCardSkeleton from '../components/Loading/ProductCardSkeleton'; // <-- Added Skeleton Import
+import { decodeCategoryRouteToken } from '../utils/routeTokens';
 
 const Category = () => {
-  const { categoryName } = useParams();
+  const [searchParams] = useSearchParams();
+  const categoryName = decodeCategoryRouteToken(
+    searchParams.get("sid"),
+    searchParams.get("ctx")
+  );
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Helper to turn URL slugs ("desk-organizers") back into readable names ("Desk Organizers")
   const formattedCategory = categoryName
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+    ? categoryName
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
+    : '';
 
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL
 
   useEffect(() => {
     const fetchCategoryProducts = async () => {
+      if (!categoryName) {
+        setProducts([]);
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       try {
         // Fetch products filtered by the category query parameter
@@ -42,6 +55,20 @@ const Category = () => {
 
   // Array to map 6 skeleton cards
   const skeletonArray = Array.from({ length: 6 });
+
+  if (!categoryName) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center bg-creator-white text-creator-black">
+        <h2 className="text-2xl font-light mb-4">Category not found.</h2>
+        <Link
+          to="/"
+          className="text-creator-muted hover:text-creator-black underline underline-offset-4"
+        >
+          Return Home
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-creator-white text-creator-black pb-24">

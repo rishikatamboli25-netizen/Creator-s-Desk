@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import ProductCard from "../components/ProductCard";
-import ProductDetailSkeleton from "../components/Loading/ProductDetailSkeleton"; // <-- Added Skeleton Import
+import { buildCategoryUrl, decodeProductRouteToken } from "../utils/routeTokens";
+import ProductDetailSkeleton from "../components/Loading/ProductDetailSkeleton";
 
 const ProductDetail = () => {
-  const { slug } = useParams();
+  const [searchParams] = useSearchParams();
+  const routeToken = searchParams.get("id");
+  const slug = decodeProductRouteToken(routeToken);
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -27,6 +30,14 @@ const ProductDetail = () => {
   useEffect(() => {
     const fetchProductData = async () => {
       setIsLoading(true);
+
+      if (!slug) {
+        setProduct(null);
+        setRelatedProducts([]);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const productRes = await fetch(`${BACKEND_URL}/api/products/${slug}`);
         if (!productRes.ok) throw new Error("Product not found");
@@ -84,7 +95,7 @@ const ProductDetail = () => {
   const handleAddToCart = () => {
     if (!isAuthenticated) {
       localStorage.setItem('pendingAction', JSON.stringify({ action: 'cart', targetSlug: product.slug }));
-      navigate('/login', { state: { returnTo: location.pathname } });
+      navigate('/login', { state: { returnTo: `${location.pathname}${location.search}` } });
       return;
     }
 
@@ -96,7 +107,7 @@ const ProductDetail = () => {
   const handleWishlist = () => {
     if (!isAuthenticated) {
       localStorage.setItem('pendingAction', JSON.stringify({ action: 'wishlist', targetSlug: product.slug }));
-      navigate('/login', { state: { returnTo: location.pathname } });
+      navigate('/login', { state: { returnTo: `${location.pathname}${location.search}` } });
       return;
     }
 
@@ -292,7 +303,7 @@ const ProductDetail = () => {
               <h2 className="text-3xl font-light tracking-tight">Complete Your Setup</h2>
               <p className="mt-2 text-creator-muted">Explore similar items in {product.category}.</p>
             </div>
-            <Link to={`/category/${product.category.toLowerCase().replace(/\s+/g, '-')}`} className="hidden sm:block text-sm font-medium hover:text-creator-muted underline underline-offset-4 mb-1">
+            <Link to={buildCategoryUrl(product.category)} className="hidden sm:block text-sm font-medium hover:text-creator-muted underline underline-offset-4 mb-1">
               View All
             </Link>
           </div>
