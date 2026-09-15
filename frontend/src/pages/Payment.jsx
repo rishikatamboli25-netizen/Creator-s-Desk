@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import InvoiceModal from '../components/InvoiceModal';
-import PaymentSkeleton from '../components/PaymentSkeleton';
+import PaymentSkeleton from '../components/Loading/PaymentSKeleton';
 
 const Payment = () => {
   const navigate = useNavigate();
