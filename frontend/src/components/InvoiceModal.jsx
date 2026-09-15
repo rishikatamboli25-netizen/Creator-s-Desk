@@ -4,12 +4,17 @@ const POLL_INTERVAL_MS = 1500;
 const MAX_WAIT_MS = 30000;
 
 const InvoiceModal = ({ order, token, onClose }) => {
-  const [invoiceUrl, setInvoiceUrl] = useState(order?.document?.url || null);
-  const [isLoading, setIsLoading] = useState(!order?.document?.url);
+  const [invoiceUrl, setInvoiceUrl] = useState(
+    order?.document?.url || null
+  );
+  const [isLoading, setIsLoading] = useState(
+    !order?.document?.url
+  );
   const [error, setError] = useState(null);
 
   const BASE_URL =
-    import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    import.meta.env.VITE_BACKEND_URL ||
+    'http://localhost:5000';
 
   const orderId = useMemo(
     () => order?.orderId || order?._id,
@@ -29,7 +34,9 @@ const InvoiceModal = ({ order, token, onClose }) => {
       }
 
       if (!token) {
-        setError('Authentication required to retrieve the invoice.');
+        setError(
+          'Authentication required to retrieve the invoice.'
+        );
         setIsLoading(false);
         return;
       }
@@ -59,8 +66,13 @@ const InvoiceModal = ({ order, token, onClose }) => {
           setInvoiceUrl(url);
           setIsLoading(false);
 
-          if (intervalId) clearInterval(intervalId);
-          if (timeoutId) clearTimeout(timeoutId);
+          if (intervalId) {
+            clearInterval(intervalId);
+          }
+
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
 
           return;
         }
@@ -73,18 +85,36 @@ const InvoiceModal = ({ order, token, onClose }) => {
           );
           setIsLoading(false);
 
-          if (intervalId) clearInterval(intervalId);
-          if (timeoutId) clearTimeout(timeoutId);
+          if (intervalId) {
+            clearInterval(intervalId);
+          }
+
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
         }
       } catch (requestError) {
-        if (Date.now() - startedAt >= MAX_WAIT_MS && !cancelled) {
-          console.error('Invoice retrieval error:', requestError);
+        if (
+          Date.now() - startedAt >= MAX_WAIT_MS &&
+          !cancelled
+        ) {
+          console.error(
+            'Invoice retrieval error:',
+            requestError
+          );
 
-          setError('Unable to retrieve the invoice right now.');
+          setError(
+            'Unable to retrieve the invoice right now.'
+          );
           setIsLoading(false);
 
-          if (intervalId) clearInterval(intervalId);
-          if (timeoutId) clearTimeout(timeoutId);
+          if (intervalId) {
+            clearInterval(intervalId);
+          }
+
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
         }
       }
     };
@@ -94,7 +124,10 @@ const InvoiceModal = ({ order, token, onClose }) => {
     fetchLatestOrder();
 
     if (!cancelled && !invoiceUrl) {
-      intervalId = setInterval(fetchLatestOrder, POLL_INTERVAL_MS);
+      intervalId = setInterval(
+        fetchLatestOrder,
+        POLL_INTERVAL_MS
+      );
 
       timeoutId = setTimeout(() => {
         if (cancelled) return;
@@ -104,36 +137,45 @@ const InvoiceModal = ({ order, token, onClose }) => {
         );
         setIsLoading(false);
 
-        if (intervalId) clearInterval(intervalId);
+        if (intervalId) {
+          clearInterval(intervalId);
+        }
       }, MAX_WAIT_MS);
     }
 
     return () => {
       cancelled = true;
 
-      if (intervalId) clearInterval(intervalId);
-      if (timeoutId) clearTimeout(timeoutId);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [BASE_URL, orderId, token]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white w-full max-w-4xl h-[90vh] flex flex-col border border-creator-border shadow-xl relative">
+    <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center px-4 py-6">
+      <div className="bg-white w-full max-w-[54rem] h-[78vh] flex flex-col border border-creator-border shadow-xl relative">
 
-        <div className="flex justify-between items-center p-4 border-b border-creator-border">
-          <h2 className="text-lg font-medium tracking-tight">
+        {/* Header */}
+        <div className="flex justify-between items-center px-4 py-3 border-b border-creator-border">
+          <h2 className="text-base font-medium tracking-tight">
             Invoice: {orderId}
           </h2>
 
           <button
             onClick={onClose}
-            className="text-creator-muted hover:text-black"
+            className="text-creator-muted hover:text-black text-sm"
           >
             &times; Close
           </button>
         </div>
 
-        <div className="flex-1 bg-gray-100 flex items-center justify-center overflow-hidden p-4">
+        {/* Invoice preview */}
+        <div className="flex-1 bg-gray-100 flex items-center justify-center overflow-hidden p-3">
           {isLoading ? (
             <span className="text-sm uppercase tracking-widest text-creator-muted animate-pulse">
               Waiting for invoice service...
@@ -155,7 +197,8 @@ const InvoiceModal = ({ order, token, onClose }) => {
           )}
         </div>
 
-        <div className="p-4 border-t border-creator-border flex gap-4 justify-end">
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-creator-border flex gap-3 justify-end">
           <button
             onClick={() => {
               if (!invoiceUrl) return;
@@ -166,13 +209,16 @@ const InvoiceModal = ({ order, token, onClose }) => {
               );
 
               if (printWindow) {
-                printWindow.addEventListener('load', () => {
-                  printWindow.print();
-                });
+                printWindow.addEventListener(
+                  'load',
+                  () => {
+                    printWindow.print();
+                  }
+                );
               }
             }}
             disabled={isLoading || !invoiceUrl}
-            className="px-6 py-3 border border-creator-border text-sm uppercase tracking-widest hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            className="px-5 py-2.5 border border-creator-border text-sm uppercase tracking-widest hover:bg-gray-50 disabled:opacity-50 transition-colors"
           >
             Print
           </button>
@@ -182,7 +228,7 @@ const InvoiceModal = ({ order, token, onClose }) => {
             target="_blank"
             rel="noreferrer"
             download={`invoice-${orderId}.pdf`}
-            className={`px-6 py-3 bg-creator-black text-white text-sm uppercase tracking-widest hover:bg-gray-900 transition-colors ${
+            className={`px-5 py-2.5 bg-creator-black text-white text-sm uppercase tracking-widest hover:bg-gray-900 transition-colors ${
               isLoading || !invoiceUrl
                 ? 'opacity-50 pointer-events-none'
                 : ''
@@ -191,11 +237,9 @@ const InvoiceModal = ({ order, token, onClose }) => {
             Download
           </a>
         </div>
-
       </div>
     </div>
   );
 };
 
 export default InvoiceModal;
-
