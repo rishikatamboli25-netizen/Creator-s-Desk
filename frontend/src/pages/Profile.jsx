@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import InvoiceModal from "../components/InvoiceModal";
+import RefundCenter from "../components/RefundCenter";
 
 const Profile = () => {
   const { token, logout } = useAuth();
@@ -183,6 +184,16 @@ const Profile = () => {
               My Orders
             </button>
             <button
+              onClick={() => setActiveTab("refunds")}
+              className={`text-left text-xs uppercase tracking-widest py-4 px-5 transition-colors ${
+                activeTab === "refunds"
+                  ? "bg-creator-black text-creator-white"
+                  : "text-creator-muted hover:bg-creator-white border border-transparent hover:border-creator-border"
+              }`}
+            >
+              Refunds &amp; Payouts
+            </button>
+            <button
               onClick={() => setActiveTab("details")}
               className={`text-left text-xs uppercase tracking-widest py-4 px-5 transition-colors ${
                 activeTab === "details"
@@ -205,241 +216,277 @@ const Profile = () => {
         </div>
 
         <div className="md:col-span-3">
-          {activeTab === "orders" && (
-            <div>
-              <h2 className="text-xl font-light tracking-tight text-creator-black mb-8 border-b border-creator-border pb-4">
-                Order History
-              </h2>
+  {activeTab === "refunds" && (
+    <RefundCenter />
+  )}
 
-              {orders.length === 0 ? (
-                <div className="p-12 border border-creator-border bg-creator-white text-center">
-                  <p className="text-sm text-creator-muted mb-6">
-                    You haven't placed any orders yet.
-                  </p>
-                  <button
-                    onClick={() => navigate("/")}
-                    className="px-8 py-3 bg-creator-black text-creator-white text-xs uppercase tracking-widest hover:bg-gray-900 transition-colors"
-                  >
-                    Start Shopping
-                  </button>
+  {activeTab === "orders" && (
+    <div>
+      <h2 className="text-xl font-light tracking-tight text-creator-black mb-8 border-b border-creator-border pb-4">
+        Order History
+      </h2>
+
+      {orders.length === 0 ? (
+        <div className="p-12 border border-creator-border bg-creator-white text-center">
+          <p className="text-sm text-creator-muted mb-6">
+            You haven't placed any orders yet.
+          </p>
+
+          <button
+            onClick={() => navigate("/")}
+            className="px-8 py-3 bg-creator-black text-creator-white text-xs uppercase tracking-widest hover:bg-gray-900 transition-colors"
+          >
+            Start Shopping
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {orders.map((order) => (
+            <div
+              key={order._id}
+              className="border border-creator-border bg-creator-white p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 transition-colors hover:bg-gray-50"
+            >
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-12 w-full md:w-auto flex-1">
+                <div>
+                  <span className="block text-xs uppercase tracking-widest text-creator-muted mb-1">
+                    Order ID
+                  </span>
+
+                  <span className="font-medium text-sm">
+                    {order._id.slice(-6).toUpperCase()}
+                  </span>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {orders.map((order) => (
-                    <div
-                      key={order._id}
-                      className="border border-creator-border bg-creator-white p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 transition-colors hover:bg-gray-50"
-                    >
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-12 w-full md:w-auto flex-1">
-                        <div>
-                          <span className="block text-xs uppercase tracking-widest text-creator-muted mb-1">
-                            Order ID
-                          </span>
-                          <span className="font-medium text-sm">
-                            {order._id.slice(-6).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="block text-xs uppercase tracking-widest text-creator-muted mb-1">
-                            Date
-                          </span>
-                          <span className="text-sm">
-                            {new Date(order.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="block text-xs uppercase tracking-widest text-creator-muted mb-1">
-                            Items
-                          </span>
-                          <span className="text-sm">
-                            {order.items?.length || 0}
-                          </span>
-                        </div>
-                      </div>
 
-                      <div className="text-left md:text-right w-full md:w-auto pt-4 md:pt-0 border-t border-creator-border md:border-t-0 mt-2 md:mt-0 flex flex-col items-start md:items-end">
-                        <span className="block text-xs uppercase tracking-widest text-creator-muted mb-1 md:hidden">
-                          Total
-                        </span>
-                        <p className="text-xl font-medium text-creator-black">
-                          ${order.totalAmount.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-green-600 uppercase tracking-widest mt-1 mb-4">
-                          Confirmed
-                        </p>
+                <div>
+                  <span className="block text-xs uppercase tracking-widest text-creator-muted mb-1">
+                    Date
+                  </span>
 
-                        <button
-                          onClick={() => setSelectedInvoiceOrder(order)}
-                          className="px-4 py-2 text-[10px] uppercase tracking-widest border border-creator-border hover:bg-gray-100 transition-colors"
-                        >
-                          View Invoice
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                  <span className="text-sm">
+                    {new Date(
+                      order.createdAt
+                    ).toLocaleDateString()}
+                  </span>
                 </div>
-              )}
-            </div>
-          )}
 
-          {activeTab === "details" && (
-            <div>
-              <div className="flex justify-between items-center mb-8 border-b border-creator-border pb-4">
-                <h2 className="text-xl font-light tracking-tight text-creator-black">
-                  Personal Details
-                </h2>
-                {!isEditing && (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="text-xs uppercase tracking-widest border-b border-creator-black pb-1 hover:text-creator-muted hover:border-creator-muted transition-colors"
-                  >
-                    Edit
-                  </button>
-                )}
+                <div>
+                  <span className="block text-xs uppercase tracking-widest text-creator-muted mb-1">
+                    Items
+                  </span>
+
+                  <span className="text-sm">
+                    {order.items?.length || 0}
+                  </span>
+                </div>
               </div>
 
-              <form onSubmit={handleSaveDetails} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
-                      Phone Number
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.phone}
-                      disabled
-                      className="w-full p-4 border border-creator-border bg-creator-surface text-sm text-creator-muted cursor-not-allowed outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className={`w-full p-4 border text-sm outline-none transition-colors ${
-                        isEditing
-                          ? "border-creator-border bg-creator-white focus:border-creator-black"
-                          : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
-                      }`}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
-                      Full Name
-                    </label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className={`w-full p-4 border text-sm outline-none transition-colors ${
-                        isEditing
-                          ? "border-creator-border bg-creator-white focus:border-creator-black"
-                          : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
-                      }`}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
-                      Street Address
-                    </label>
-                    <input
-                      type="text"
-                      name="street"
-                      value={formData.street}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className={`w-full p-4 border text-sm outline-none transition-colors ${
-                        isEditing
-                          ? "border-creator-border bg-creator-white focus:border-creator-black"
-                          : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
-                      }`}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
-                      City
-                    </label>
-                    <input
-                      type="text"
-                      name="city"
-                      value={formData.city}
-                      onChange={handleInputChange}
-                      disabled={!isEditing}
-                      className={`w-full p-4 border text-sm outline-none transition-colors ${
-                        isEditing
-                          ? "border-creator-border bg-creator-white focus:border-creator-black"
-                          : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
-                      }`}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
-                        State
-                      </label>
-                      <input
-                        type="text"
-                        name="state"
-                        value={formData.state}
-                        onChange={handleInputChange}
-                        disabled={!isEditing}
-                        className={`w-full p-4 border text-sm outline-none transition-colors ${
-                          isEditing
-                            ? "border-creator-border bg-creator-white focus:border-creator-black"
-                            : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
-                        }`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
-                        ZIP Code
-                      </label>
-                      <input
-                        type="text"
-                        name="zip"
-                        value={formData.zip}
-                        onChange={handleInputChange}
-                        disabled={!isEditing}
-                        className={`w-full p-4 border text-sm outline-none transition-colors ${
-                          isEditing
-                            ? "border-creator-border bg-creator-white focus:border-creator-black"
-                            : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </div>
+              <div className="text-left md:text-right w-full md:w-auto pt-4 md:pt-0 border-t border-creator-border md:border-t-0 mt-2 md:mt-0 flex flex-col items-start md:items-end">
+                <span className="block text-xs uppercase tracking-widest text-creator-muted mb-1 md:hidden">
+                  Total
+                </span>
 
-                {isEditing && (
-                  <div className="pt-8 flex items-center justify-end gap-6 border-t border-creator-border mt-8">
-                    <button
-                      type="button"
-                      onClick={handleCancelEdit}
-                      disabled={isUpdating}
-                      className="text-xs uppercase tracking-widest text-creator-muted hover:text-creator-black transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isUpdating}
-                      className="bg-creator-black text-creator-white px-8 py-4 text-xs uppercase tracking-widest hover:bg-gray-900 transition-colors disabled:opacity-70"
-                    >
-                      {isUpdating ? "Saving..." : "Save Changes"}
-                    </button>
-                  </div>
-                )}
-              </form>
+                <p className="text-xl font-medium text-creator-black">
+                  ₹{Number(order.totalAmount || 0).toFixed(2)}
+                </p>
+
+                <p className="text-xs text-green-600 uppercase tracking-widest mt-1 mb-4">
+                  Confirmed
+                </p>
+
+                <button
+                  onClick={() =>
+                    setSelectedInvoiceOrder(order)
+                  }
+                  className="px-4 py-2 text-[10px] uppercase tracking-widest border border-creator-border hover:bg-gray-100 transition-colors"
+                >
+                  View Invoice
+                </button>
+              </div>
             </div>
-          )}
+          ))}
         </div>
+      )}
+    </div>
+  )}
+
+  {activeTab === "details" && (
+    <div>
+      <div className="flex justify-between items-center mb-8 border-b border-creator-border pb-4">
+        <h2 className="text-xl font-light tracking-tight text-creator-black">
+          Personal Details
+        </h2>
+
+        {!isEditing && (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="text-xs uppercase tracking-widest border-b border-creator-black pb-1 hover:text-creator-muted hover:border-creator-muted transition-colors"
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      <form
+        onSubmit={handleSaveDetails}
+        className="space-y-6"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
+              Phone Number
+            </label>
+
+            <input
+              type="text"
+              value={formData.phone}
+              disabled
+              className="w-full p-4 border border-creator-border bg-creator-surface text-sm text-creator-muted cursor-not-allowed outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
+              Email Address
+            </label>
+
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleInputChange}
+              disabled={!isEditing}
+              className={`w-full p-4 border text-sm outline-none transition-colors ${
+                isEditing
+                  ? "border-creator-border bg-creator-white focus:border-creator-black"
+                  : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
+              }`}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
+              Full Name
+            </label>
+
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              disabled={!isEditing}
+              className={`w-full p-4 border text-sm outline-none transition-colors ${
+                isEditing
+                  ? "border-creator-border bg-creator-white focus:border-creator-black"
+                  : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
+              }`}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
+              Street Address
+            </label>
+
+            <input
+              type="text"
+              name="street"
+              value={formData.street}
+              onChange={handleInputChange}
+              disabled={!isEditing}
+              className={`w-full p-4 border text-sm outline-none transition-colors ${
+                isEditing
+                  ? "border-creator-border bg-creator-white focus:border-creator-black"
+                  : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
+              }`}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
+              City
+            </label>
+
+            <input
+              type="text"
+              name="city"
+              value={formData.city}
+              onChange={handleInputChange}
+              disabled={!isEditing}
+              className={`w-full p-4 border text-sm outline-none transition-colors ${
+                isEditing
+                  ? "border-creator-border bg-creator-white focus:border-creator-black"
+                  : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
+              }`}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
+                State
+              </label>
+
+              <input
+                type="text"
+                name="state"
+                value={formData.state}
+                onChange={handleInputChange}
+                disabled={!isEditing}
+                className={`w-full p-4 border text-sm outline-none transition-colors ${
+                  isEditing
+                    ? "border-creator-border bg-creator-white focus:border-creator-black"
+                    : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
+                }`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-creator-muted mb-2">
+                ZIP Code
+              </label>
+
+              <input
+                type="text"
+                name="zip"
+                value={formData.zip}
+                onChange={handleInputChange}
+                disabled={!isEditing}
+                className={`w-full p-4 border text-sm outline-none transition-colors ${
+                  isEditing
+                    ? "border-creator-border bg-creator-white focus:border-creator-black"
+                    : "border-creator-border bg-creator-surface text-creator-muted cursor-not-allowed"
+                }`}
+              />
+            </div>
+          </div>
+        </div>
+
+        {isEditing && (
+          <div className="pt-8 flex items-center justify-end gap-6 border-t border-creator-border mt-8">
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              disabled={isUpdating}
+              className="text-xs uppercase tracking-widest text-creator-muted hover:text-creator-black transition-colors"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={isUpdating}
+              className="bg-creator-black text-creator-white px-8 py-4 text-xs uppercase tracking-widest hover:bg-gray-900 transition-colors disabled:opacity-70"
+            >
+              {isUpdating
+                ? "Saving..."
+                : "Save Changes"}
+            </button>
+          </div>
+        )}
+      </form>
+    </div>
+  )}
+</div>
       </div>
     </main>
   );
