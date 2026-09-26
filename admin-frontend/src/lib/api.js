@@ -1,9 +1,11 @@
 const GATEWAY_URL =
-  import.meta.env.VITE_GATEWAY_URL ||
+  process.env.VITE_GATEWAY_URL ||
   'http://localhost:5000';
 
+console.log(GATEWAY_URL)
+
 const ADMIN_API_URL =
-  import.meta.env.VITE_ADMIN_API_URL ||
+  process.env.VITE_ADMIN_API_URL ||
   `${GATEWAY_URL}/api/admin`;
 
 const readCookie = (name) => {
