@@ -3,6 +3,6 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev --no-audit --no-fund
 COPY src ./src
-COPY .env.example ./.env.example
+COPY .env
 EXPOSE 5010
 CMD ["npm", "start"]
