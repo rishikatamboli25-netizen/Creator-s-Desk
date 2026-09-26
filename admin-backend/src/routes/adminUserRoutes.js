@@ -25,10 +25,11 @@ const serializeAdminUser = (user, activeSessionCount = 0) => ({
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
   activeSessionCount,
+  mfaEnabled: Boolean(user.mfaEnabled),
 });
 
 const assertValidObjectId = (value) => {
-  if (!/^[a-f\\d]{24}$/i.test(String(value || ''))) {
+  if (!/^[a-f0-9]{24}$/i.test(String(value || ''))) {
     const error = new Error('Invalid admin user ID.');
     error.status = 400;
     throw error;
@@ -98,7 +99,7 @@ router.get(
   async (_req, res) => {
     try {
       const users = await AdminUser.find({})
-        .select('name email roleKey status lastLoginAt createdAt updatedAt')
+        .select('name email roleKey status lastLoginAt createdAt updatedAt mfaEnabled')
         .sort({ createdAt: -1 })
         .lean();
 
@@ -254,7 +255,9 @@ router.patch(
         action: 'admin.user.role.changed',
         entityType: 'AdminUser',
         entityId: target._id.toString(),
-        metadata: { before: { roleKey: previousRoleKey }, after: { roleKey: nextRoleKey } },
+        before: { roleKey: previousRoleKey },
+        after: { roleKey: nextRoleKey },
+        reason: `Administrator role changed from ${previousRoleKey} to ${nextRoleKey}.`,
         req,
       });
 
@@ -303,11 +306,10 @@ router.patch(
         action: nextStatus === 'ACTIVE' ? 'admin.user.enabled' : 'admin.user.disabled',
         entityType: 'AdminUser',
         entityId: target._id.toString(),
-        metadata: {
-          before: { status: previousStatus },
-          after: { status: nextStatus },
-          revokedSessionCount,
-        },
+        before: { status: previousStatus },
+        after: { status: nextStatus },
+        reason: `Administrator account status changed from ${previousStatus} to ${nextStatus}.`,
+        metadata: { revokedSessionCount },
         req,
       });
 
@@ -342,6 +344,7 @@ router.post(
         action: 'admin.user.sessions.revoked',
         entityType: 'AdminUser',
         entityId: target._id.toString(),
+        reason: 'All active administrator sessions were revoked by an authorized administrator.',
         metadata: { revokedSessionCount: result.deletedCount || 0 },
         req,
       });

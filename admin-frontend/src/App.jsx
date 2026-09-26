@@ -1,12 +1,12 @@
 import React from 'react';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AdminShell from './components/AdminShell.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { AdminAuthProvider } from './context/AdminAuthContext.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import ActivateAdminPage from './pages/ActivateAdminPage.jsx';
-import ProductsPage from './pages/ProductsPage.jsx';
+import CatalogPage from './pages/CatalogPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
 import OrdersPage from './pages/OrdersPage.jsx';
 import CustomersPage from './pages/CustomersPage.jsx';
@@ -29,7 +29,8 @@ export default function App() {
           <Route path="/activate-admin" element={<ActivateAdminPage />} />
           <Route element={<ProtectedApp />}>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/catalog" element={<CatalogPage />} />
+            <Route path="/products" element={<Navigate to="/catalog" replace />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/customers" element={<CustomersPage />} />

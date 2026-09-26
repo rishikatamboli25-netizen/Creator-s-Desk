@@ -6,6 +6,16 @@ const ADMIN_API_URL =
   import.meta.env.VITE_ADMIN_API_URL ||
   `${GATEWAY_URL}/api/admin`;
 
+const readCookie = (name) => {
+  const match = document.cookie
+    .split('; ')
+    .find((row) => row.startsWith(`${name}=`));
+
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : '';
+};
+
+const getCsrfToken = () => readCookie('cd_admin_csrf');
+
 async function parseResponse(response) {
   const contentType =
     response.headers.get('content-type') || '';
@@ -24,6 +34,10 @@ async function request(
   options = {},
   includeCredentials = false
 ) {
+  const method = String(options.method || 'GET').toUpperCase();
+  const shouldSendCsrf = includeCredentials && !['GET', 'HEAD', 'OPTIONS'].includes(method);
+  const csrfToken = shouldSendCsrf ? getCsrfToken() : '';
+
   const response = await fetch(url, {
     ...options,
     ...(includeCredentials
@@ -37,6 +51,7 @@ async function request(
               'application/json',
           }
         : {}),
+      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
       ...(options.headers || {}),
     },
   });
@@ -97,6 +112,70 @@ export const adminApi = {
   permissions: () =>
     request(
       `${ADMIN_API_URL}/system/permissions`,
+      {},
+      true
+    ),
+
+  catalog: (params = {}) =>
+    request(
+      `${ADMIN_API_URL}/catalog${buildQuery(params)}`,
+      {},
+      true
+    ),
+
+  createCatalogProduct: (payload) =>
+    request(
+      `${ADMIN_API_URL}/catalog`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  bulkImportCatalog: (rows, reason) =>
+    request(
+      `${ADMIN_API_URL}/catalog/bulk-import`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ rows, reason }),
+      },
+      true
+    ),
+
+  updateCatalogProduct: (productId, payload) =>
+    request(
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  adjustCatalogStock: (productId, delta, reason) =>
+    request(
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/stock-adjust`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ delta, reason }),
+      },
+      true
+    ),
+
+  setCatalogAvailability: (productId, available, reason) =>
+    request(
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/availability`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ available, reason }),
+      },
+      true
+    ),
+
+  catalogInventoryHistory: (productId) =>
+    request(
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/inventory-history`,
       {},
       true
     ),
@@ -272,6 +351,46 @@ export const adminApi = {
   changeMyPassword: (payload) =>
     request(
       `${ADMIN_API_URL}/auth/change-password`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  mfaSetup: (currentPassword) =>
+    request(
+      `${ADMIN_API_URL}/auth/mfa/setup`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword }),
+      },
+      true
+    ),
+
+  enableMfa: (payload) =>
+    request(
+      `${ADMIN_API_URL}/auth/mfa/enable`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  disableMfa: (payload) =>
+    request(
+      `${ADMIN_API_URL}/auth/mfa/disable`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  regenerateMfaRecoveryCodes: (payload) =>
+    request(
+      `${ADMIN_API_URL}/auth/mfa/recovery-codes`,
       {
         method: 'POST',
         body: JSON.stringify(payload),

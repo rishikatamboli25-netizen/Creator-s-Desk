@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -33,12 +33,18 @@ const Payment = () => {
   const [confirmedOrderId, setConfirmedOrderId] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [completedOrderData, setCompletedOrderData] = useState(null);
+  const [checkoutSubtotal, setCheckoutSubtotal] = useState(null);
+  const [checkoutTotal, setCheckoutTotal] = useState(null);
+  const activeReservationRef = useRef(null);
 
   // Fixed shipping charge for every order
   const SHIPPING_CHARGE = 20;
 
   const finalTotal =
     (Number(cartTotal) || 0) + SHIPPING_CHARGE;
+
+  const orderTotal =
+    checkoutTotal !== null ? checkoutTotal : finalTotal;
 
   const BACKEND_URL =
     import.meta.env.VITE_BACKEND_URL ||
@@ -116,12 +122,102 @@ const Payment = () => {
     shippingAddress.state.trim() !== '' &&
     shippingAddress.zip.trim() !== '';
 
-  const saveOrderToDatabase = async (
-    paymentId = null
-  ) => {
+  const createCheckoutId = () => {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    return `checkout-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  };
+
+  const reserveInventory = async (checkoutId) => {
+    if (!token) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+
+    const response = await fetch(
+      `${BACKEND_URL}/api/orders/inventory/reserve`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          checkoutId,
+          items: orderItems.map((item) => ({
+            productId: item.id || item._id,
+            quantity: Number(item.quantity) || 1,
+          })),
+        }),
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || 'Unable to reserve inventory for this order.'
+      );
+    }
+
+    const reservation = data.reservation;
+    if (!reservation?.id) {
+      throw new Error('Inventory reservation was not created.');
+    }
+
+    const reservedTotal = Math.round(
+      (Number(reservation.subtotal || 0) + SHIPPING_CHARGE) * 100
+    ) / 100;
+
+    setCheckoutSubtotal(Number(reservation.subtotal || 0));
+    setCheckoutTotal(reservedTotal);
+    activeReservationRef.current = {
+      id: reservation.id,
+      checkoutId,
+    };
+
+    return reservation;
+  };
+
+  const releaseCheckoutReservation = async (reservationId, reason) => {
+    if (!reservationId || !token) return;
+
+    try {
+      await fetch(
+        `${BACKEND_URL}/api/orders/inventory/reserve/${encodeURIComponent(reservationId)}/release`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason }),
+        }
+      );
+    } catch (releaseError) {
+      console.error(
+        'Inventory reservation release error:',
+        releaseError
+      );
+    } finally {
+      if (activeReservationRef.current?.id === reservationId) {
+        activeReservationRef.current = null;
+      }
+    }
+  };
+
+  const saveOrderToDatabase = async ({
+    paymentId = null,
+    inventoryReservationId,
+    checkoutId,
+  }) => {
     if (!token) {
       throw new Error(
         'Authentication required. Please log in again.'
+      );
+    }
+
+    if (!inventoryReservationId || !checkoutId) {
+      throw new Error(
+        'Inventory reservation is missing. Please return to cart and try again.'
       );
     }
 
@@ -151,19 +247,8 @@ const Payment = () => {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          items: orderItems.map((item) => ({
-            productId:
-              item.id || item._id,
-            name: item.name,
-            price:
-              Number(item.price) || 0,
-            quantity:
-              Number(item.quantity) || 1,
-          })),
-
-          // Includes fixed ₹20 shipping charge.
-          totalAmount: finalTotal,
-
+          inventoryReservationId,
+          checkoutId,
           shippingAddress: {
             street:
               shippingAddress.street.trim(),
@@ -174,11 +259,8 @@ const Payment = () => {
             zip:
               shippingAddress.zip.trim(),
           },
-
           paymentMethod,
           paymentId,
-
-          // Taken from authenticated user's profile.
           customerName,
         }),
       }
@@ -188,11 +270,15 @@ const Payment = () => {
       await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(
+      const error = new Error(
         responseData.error ||
           'Failed to save order to database'
       );
+      error.status = response.status;
+      throw error;
     }
+
+    activeReservationRef.current = null;
 
     setCompletedOrderData({
       orderId: responseData.orderId,
@@ -225,14 +311,26 @@ const Payment = () => {
 
     setIsProcessing(true);
     setError(null);
+    setCheckoutSubtotal(null);
+    setCheckoutTotal(null);
+
+    let checkoutId = null;
+    let reservation = null;
+    let paymentFlowStarted = false;
 
     try {
+      checkoutId = createCheckoutId();
+      reservation = await reserveInventory(checkoutId);
+
       // -----------------------------
       // CASH ON DELIVERY
       // -----------------------------
       if (paymentMethod === 'COD') {
         const data =
-          await saveOrderToDatabase();
+          await saveOrderToDatabase({
+            inventoryReservationId: reservation.id,
+            checkoutId,
+          });
 
         if (clearCart) {
           clearCart();
@@ -262,7 +360,7 @@ const Payment = () => {
                   'application/json',
               },
               body: JSON.stringify({
-                amount: finalTotal,
+                amount: orderTotal,
               }),
             }
           );
@@ -295,6 +393,8 @@ const Payment = () => {
           );
         }
 
+        let paymentCallbackReceived = false;
+
         const options = {
           key: razorpayKey,
           amount: orderData.amount,
@@ -305,6 +405,8 @@ const Payment = () => {
           order_id: orderData.id,
 
           handler: async (response) => {
+            paymentCallbackReceived = true;
+
             try {
               const verifyRes =
                 await fetch(
@@ -339,9 +441,13 @@ const Payment = () => {
               }
 
               const dbData =
-                await saveOrderToDatabase(
-                  response.razorpay_payment_id
-                );
+                await saveOrderToDatabase({
+                  paymentId:
+                    response.razorpay_payment_id,
+                  inventoryReservationId:
+                    reservation.id,
+                  checkoutId,
+                });
 
               if (clearCart) {
                 clearCart();
@@ -361,7 +467,7 @@ const Payment = () => {
 
               setError(
                 err.message ||
-                  'Payment succeeded, but order confirmation failed.'
+                  'Payment succeeded, but order confirmation failed. Your inventory reservation is being retained for reconciliation.'
               );
             } finally {
               setIsProcessing(false);
@@ -374,6 +480,12 @@ const Payment = () => {
 
           modal: {
             ondismiss: () => {
+              if (!paymentCallbackReceived) {
+                releaseCheckoutReservation(
+                  reservation.id,
+                  'Checkout cancelled before payment completion.'
+                );
+              }
               setIsProcessing(false);
             },
           },
@@ -381,6 +493,19 @@ const Payment = () => {
 
         const razorpayInstance =
           new window.Razorpay(options);
+
+        paymentFlowStarted = true;
+
+        razorpayInstance.on?.('payment.failed', (failure) => {
+          console.error(
+            'Razorpay payment failure:',
+            failure?.error || failure
+          );
+          setError(
+            failure?.error?.description ||
+              'Payment failed. Your reserved stock will be released when this checkout is closed.'
+          );
+        });
 
         razorpayInstance.open();
       }
@@ -390,6 +515,13 @@ const Payment = () => {
         err
       );
 
+      if (reservation?.id && !paymentFlowStarted) {
+        await releaseCheckoutReservation(
+          reservation.id,
+          'Checkout could not be completed before order creation.'
+        );
+      }
+
       setError(
         err.message ||
           'Something went wrong. Please try again.'
@@ -398,7 +530,6 @@ const Payment = () => {
       setIsProcessing(false);
     }
   };
-
   // ----------------------------------
   // ORDER SUCCESS
   // ----------------------------------
@@ -707,7 +838,7 @@ const Payment = () => {
 
             <span className="font-medium">
               ₹
-              {(Number(cartTotal) || 0).toFixed(
+              {(Number(checkoutSubtotal ?? cartTotal) || 0).toFixed(
                 2
               )}
             </span>
@@ -729,7 +860,7 @@ const Payment = () => {
             </span>
 
             <span className="text-2xl font-medium text-creator-black">
-              ₹{finalTotal.toFixed(2)}
+              ₹{orderTotal.toFixed(2)}
             </span>
           </div>
         </div>

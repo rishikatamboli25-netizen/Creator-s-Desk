@@ -8,9 +8,22 @@ import { requireAdminAuth, loadSession } from '../middleware/authMiddleware.js';
 import { recordAudit } from '../services/auditService.js';
 import { createSessionToken, hashSessionToken } from '../utils/sessionToken.js';
 import { SETTING_KEYS, getSettingNumber } from '../services/settingsService.js';
+import {
+  createMfaSetup,
+  decryptMfaSecret,
+  generateMfaBackupCodes,
+  hashMfaBackupCodes,
+  verifyMfaCredential,
+  verifyTotp,
+} from '../services/mfaService.js';
 
 const router = express.Router();
 
+router.get('/csrf', (req, res) => {
+  return res.status(200).json({
+    message: 'CSRF token issued.',
+  });
+});
 
 const publicAdmin = (adminUser, role) => ({
   id: adminUser._id,
@@ -19,6 +32,7 @@ const publicAdmin = (adminUser, role) => ({
   role: adminUser.roleKey,
   permissions: role?.permissions || [],
   lastLoginAt: adminUser.lastLoginAt || null,
+  mfaEnabled: Boolean(adminUser.mfaEnabled),
 });
 
 const setSessionCookie = (res, token, sessionHours) => {
@@ -71,7 +85,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required.' });
     }
 
-    const adminUser = await AdminUser.findOne({ email }).select('+passwordHash');
+    const adminUser = await AdminUser.findOne({ email }).select('+passwordHash +mfaSecretEncrypted +mfaBackupCodeHashes');
 
     if (!adminUser || adminUser.status !== 'ACTIVE') {
       await recordAudit({
@@ -104,6 +118,70 @@ router.post('/login', async (req, res) => {
     const role = await Role.findOne({ key: adminUser.roleKey }).lean();
     if (!role) {
       return res.status(500).json({ error: 'Admin role configuration is invalid.' });
+    }
+
+    if (adminUser.mfaEnabled) {
+      const credential = String(req.body?.otp || '').trim();
+
+      if (!credential) {
+        await recordAudit({
+          actorAdminUserId: adminUser._id,
+          action: 'admin.login.mfa_required',
+          entityType: 'AdminUser',
+          entityId: adminUser._id.toString(),
+          actorRoleKey: adminUser.roleKey,
+          outcome: 'FAILED',
+          reason: 'MFA verification is required before an admin session can be created.',
+          metadata: { failure: 'mfa_required' },
+          req,
+        });
+        return res.status(401).json({
+          error: 'MFA verification required.',
+          mfaRequired: true,
+        });
+      }
+
+      let verification;
+      try {
+        verification = await verifyMfaCredential(adminUser, credential);
+      } catch (mfaError) {
+        console.error('[CD_ADMIN] MFA verification error:', mfaError.message);
+        return res.status(503).json({ error: 'MFA verification is temporarily unavailable.' });
+      }
+
+      if (!verification.valid) {
+        await recordAudit({
+          actorAdminUserId: adminUser._id,
+          action: 'admin.login.mfa_failed',
+          entityType: 'AdminUser',
+          entityId: adminUser._id.toString(),
+          actorRoleKey: adminUser.roleKey,
+          outcome: 'FAILED',
+          reason: 'Administrator supplied an invalid MFA credential.',
+          metadata: { failure: 'invalid_mfa_credential' },
+          req,
+        });
+        return res.status(401).json({
+          error: 'Invalid MFA code or recovery code.',
+          mfaRequired: true,
+        });
+      }
+
+      if (verification.type === 'RECOVERY_CODE') {
+        await adminUser.save();
+      }
+
+      await recordAudit({
+        actorAdminUserId: adminUser._id,
+        action: 'admin.login.mfa_verified',
+        entityType: 'AdminUser',
+        entityId: adminUser._id.toString(),
+        actorRoleKey: adminUser.roleKey,
+        outcome: 'SUCCESS',
+        reason: 'Administrator MFA verification succeeded.',
+        metadata: { method: verification.type },
+        req,
+      });
     }
 
     const token = createSessionToken();
@@ -262,6 +340,220 @@ router.post('/change-password', requireAdminAuth, async (req, res) => {
     console.error('[CD_ADMIN] Password change error:', error.message);
     return res.status(error.status || 500).json({
       error: error.message || 'Unable to change admin password.',
+    });
+  }
+});
+
+
+router.post('/mfa/setup', requireAdminAuth, async (req, res) => {
+  try {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const adminUser = await AdminUser.findById(req.admin._id).select('+passwordHash +mfaPendingSecretEncrypted +mfaSecretEncrypted');
+    if (!adminUser || adminUser.status !== 'ACTIVE') {
+      return res.status(401).json({ error: 'Admin account is no longer active.' });
+    }
+
+    if (adminUser.mfaEnabled) {
+      return res.status(409).json({ error: 'MFA is already enabled for this account.' });
+    }
+
+    await assertCurrentPassword(adminUser, currentPassword);
+
+    const setup = createMfaSetup(adminUser.email);
+    adminUser.mfaPendingSecretEncrypted = setup.encryptedSecret;
+    await adminUser.save();
+
+    await recordAudit({
+      actorAdminUserId: adminUser._id,
+      actorRoleKey: adminUser.roleKey,
+      action: 'admin.mfa.setup.started',
+      entityType: 'AdminUser',
+      entityId: adminUser._id.toString(),
+      outcome: 'SUCCESS',
+      reason: 'Administrator started MFA enrollment.',
+      metadata: { method: 'TOTP', issuer: "Creator's Desk" },
+      req,
+    });
+
+    return res.status(200).json({
+      message: 'MFA setup prepared. Verify the code to enable it.',
+      secret: setup.secret,
+      otpauthUri: setup.uri,
+    });
+  } catch (error) {
+    console.error('[CD_ADMIN] MFA setup error:', error.message);
+    return res.status(error.status || 500).json({
+      error: error.message || 'Unable to prepare MFA setup.',
+    });
+  }
+});
+
+router.post('/mfa/enable', requireAdminAuth, async (req, res) => {
+  try {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const otp = String(req.body?.otp || '').trim();
+    const adminUser = await AdminUser.findById(req.admin._id).select('+passwordHash +mfaPendingSecretEncrypted +mfaSecretEncrypted +mfaBackupCodeHashes');
+    if (!adminUser || adminUser.status !== 'ACTIVE') {
+      return res.status(401).json({ error: 'Admin account is no longer active.' });
+    }
+
+    if (adminUser.mfaEnabled) {
+      return res.status(409).json({ error: 'MFA is already enabled for this account.' });
+    }
+
+    if (!adminUser.mfaPendingSecretEncrypted) {
+      return res.status(409).json({ error: 'Start MFA setup before enabling MFA.' });
+    }
+
+    await assertCurrentPassword(adminUser, currentPassword);
+
+    const pendingSecret = decryptMfaSecret(adminUser.mfaPendingSecretEncrypted);
+    if (!verifyTotp(pendingSecret, otp)) {
+      await recordAudit({
+        actorAdminUserId: adminUser._id,
+        actorRoleKey: adminUser.roleKey,
+        action: 'admin.mfa.enable_failed',
+        entityType: 'AdminUser',
+        entityId: adminUser._id.toString(),
+        outcome: 'FAILED',
+        reason: 'Administrator supplied an invalid MFA enrollment code.',
+        req,
+      });
+      return res.status(401).json({ error: 'Invalid MFA verification code.' });
+    }
+
+    const recoveryCodes = generateMfaBackupCodes(10);
+    adminUser.mfaSecretEncrypted = adminUser.mfaPendingSecretEncrypted;
+    adminUser.mfaPendingSecretEncrypted = null;
+    adminUser.mfaBackupCodeHashes = await hashMfaBackupCodes(recoveryCodes);
+    adminUser.mfaBackupCodesGeneratedAt = new Date();
+    adminUser.mfaEnabled = true;
+    await adminUser.save();
+
+    await recordAudit({
+      actorAdminUserId: adminUser._id,
+      actorRoleKey: adminUser.roleKey,
+      action: 'admin.mfa.enabled',
+      entityType: 'AdminUser',
+      entityId: adminUser._id.toString(),
+      outcome: 'SUCCESS',
+      reason: 'Administrator enabled MFA on the account.',
+      before: { mfaEnabled: false },
+      after: { mfaEnabled: true },
+      metadata: { method: 'TOTP', recoveryCodeCount: recoveryCodes.length },
+      req,
+    });
+
+    return res.status(200).json({
+      message: 'MFA enabled successfully. Save the recovery codes now.',
+      recoveryCodes,
+    });
+  } catch (error) {
+    console.error('[CD_ADMIN] MFA enable error:', error.message);
+    return res.status(error.status || 500).json({
+      error: error.message || 'Unable to enable MFA.',
+    });
+  }
+});
+
+router.post('/mfa/disable', requireAdminAuth, async (req, res) => {
+  try {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const credential = String(req.body?.otp || '').trim();
+    const adminUser = await AdminUser.findById(req.admin._id).select('+passwordHash +mfaSecretEncrypted +mfaBackupCodeHashes');
+    if (!adminUser || adminUser.status !== 'ACTIVE') {
+      return res.status(401).json({ error: 'Admin account is no longer active.' });
+    }
+
+    if (!adminUser.mfaEnabled) {
+      return res.status(409).json({ error: 'MFA is already disabled for this account.' });
+    }
+
+    await assertCurrentPassword(adminUser, currentPassword);
+    const verification = await verifyMfaCredential(adminUser, credential);
+    if (!verification.valid) {
+      return res.status(401).json({ error: 'Invalid MFA code or recovery code.' });
+    }
+
+    adminUser.mfaEnabled = false;
+    adminUser.mfaSecretEncrypted = null;
+    adminUser.mfaPendingSecretEncrypted = null;
+    adminUser.mfaBackupCodeHashes = [];
+    adminUser.mfaBackupCodesGeneratedAt = null;
+    await adminUser.save();
+
+    const sessionResult = await AdminSession.deleteMany({
+      adminUserId: adminUser._id,
+      _id: { $ne: req.adminSession?._id },
+    });
+
+    await recordAudit({
+      actorAdminUserId: adminUser._id,
+      actorRoleKey: adminUser.roleKey,
+      action: 'admin.mfa.disabled',
+      entityType: 'AdminUser',
+      entityId: adminUser._id.toString(),
+      outcome: 'SUCCESS',
+      reason: 'Administrator disabled MFA on the account.',
+      before: { mfaEnabled: true },
+      after: { mfaEnabled: false },
+      metadata: { method: verification.type, revokedOtherSessionCount: sessionResult.deletedCount || 0 },
+      req,
+    });
+
+    return res.status(200).json({
+      message: 'MFA disabled. Other admin sessions were revoked.',
+    });
+  } catch (error) {
+    console.error('[CD_ADMIN] MFA disable error:', error.message);
+    return res.status(error.status || 500).json({
+      error: error.message || 'Unable to disable MFA.',
+    });
+  }
+});
+
+router.post('/mfa/recovery-codes', requireAdminAuth, async (req, res) => {
+  try {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const otp = String(req.body?.otp || '').trim();
+    const adminUser = await AdminUser.findById(req.admin._id).select('+passwordHash +mfaSecretEncrypted +mfaBackupCodeHashes');
+    if (!adminUser || adminUser.status !== 'ACTIVE') {
+      return res.status(401).json({ error: 'Admin account is no longer active.' });
+    }
+    if (!adminUser.mfaEnabled) {
+      return res.status(409).json({ error: 'Enable MFA before generating recovery codes.' });
+    }
+
+    await assertCurrentPassword(adminUser, currentPassword);
+    if (!verifyTotp(decryptMfaSecret(adminUser.mfaSecretEncrypted), otp)) {
+      return res.status(401).json({ error: 'Invalid MFA verification code.' });
+    }
+
+    const recoveryCodes = generateMfaBackupCodes(10);
+    adminUser.mfaBackupCodeHashes = await hashMfaBackupCodes(recoveryCodes);
+    adminUser.mfaBackupCodesGeneratedAt = new Date();
+    await adminUser.save();
+
+    await recordAudit({
+      actorAdminUserId: adminUser._id,
+      actorRoleKey: adminUser.roleKey,
+      action: 'admin.mfa.recovery_codes.regenerated',
+      entityType: 'AdminUser',
+      entityId: adminUser._id.toString(),
+      outcome: 'SUCCESS',
+      reason: 'Administrator regenerated MFA recovery codes.',
+      metadata: { recoveryCodeCount: recoveryCodes.length },
+      req,
+    });
+
+    return res.status(200).json({
+      message: 'Recovery codes regenerated. Save them securely.',
+      recoveryCodes,
+    });
+  } catch (error) {
+    console.error('[CD_ADMIN] MFA recovery code error:', error.message);
+    return res.status(error.status || 500).json({
+      error: error.message || 'Unable to regenerate recovery codes.',
     });
   }
 });

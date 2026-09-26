@@ -23,7 +23,7 @@ const ProductCard = ({ product }) => {
           <p className="text-sm text-creator-muted mt-1">{product.material}</p>
         </div>
         <div className="text-lg font-medium">
-          ${product.price}
+          ₹{product.price}
         </div>
       </div>
     </Link>

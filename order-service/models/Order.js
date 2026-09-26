@@ -1,5 +1,33 @@
 import mongoose from 'mongoose';
 
+const orderItemSchema = new mongoose.Schema(
+  {
+    productId: {
+      type: String,
+      required: true,
+    },
+    sku: {
+      type: String,
+      default: null,
+    },
+    name: {
+      type: String,
+      required: true,
+    },
+    price: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    quantity: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+  },
+  { _id: false }
+);
+
 const orderSchema = new mongoose.Schema(
   {
     userId: {
@@ -7,33 +35,39 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
 
-    items: [
-      {
-        productId: {
-          type: String,
-          required: true,
-        },
+    checkoutId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
 
-        name: {
-          type: String,
-          required: true,
-        },
+    inventoryReservationId: {
+      type: String,
+      default: null,
+      index: true,
+    },
 
-        price: {
-          type: Number,
-          required: true,
-        },
+    inventoryStatus: {
+      type: String,
+      enum: ['RESERVED', 'COMMITTED', 'RELEASED', 'COMMIT_PENDING'],
+      default: 'RESERVED',
+      index: true,
+    },
 
-        quantity: {
-          type: Number,
-          default: 1,
-        },
+    items: {
+      type: [orderItemSchema],
+      required: true,
+      validate: {
+        validator: (items) => Array.isArray(items) && items.length > 0,
+        message: 'An order must contain at least one item.',
       },
-    ],
+    },
 
     totalAmount: {
       type: Number,
       required: true,
+      min: 0,
     },
 
     paymentMethod: {
@@ -45,6 +79,7 @@ const orderSchema = new mongoose.Schema(
     paymentId: {
       type: String,
       default: null,
+      index: true,
     },
 
     customerName: {
@@ -57,11 +92,12 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       required: true,
       default: 20,
+      min: 0,
     },
 
     status: {
       type: String,
-      enum: ['Processing', 'Shipped', 'Delivered', 'Cancelled'],
+      enum: ['Pending Payment', 'Processing', 'Shipped', 'Delivered', 'Cancelled'],
       default: 'Processing',
     },
 

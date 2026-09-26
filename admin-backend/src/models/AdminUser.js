@@ -41,6 +41,30 @@ const adminUserSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    mfaEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    mfaSecretEncrypted: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    mfaPendingSecretEncrypted: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    mfaBackupCodeHashes: {
+      type: [String],
+      default: [],
+      select: false,
+    },
+    mfaBackupCodesGeneratedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

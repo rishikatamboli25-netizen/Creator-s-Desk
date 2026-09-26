@@ -8,6 +8,7 @@ import { config } from './config/index.js';
 import authRoutes from './routes/authRoutes.js';
 import systemRoutes from './routes/systemRoutes.js';
 import pricingRoutes from './routes/pricingRoutes.js';
+import catalogRoutes from './routes/catalogRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import customerRoutes from './routes/customerRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
@@ -17,6 +18,7 @@ import invitationRoutes from './routes/invitationRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
+import { csrfMiddleware } from './middleware/csrfMiddleware.js';
 
 const app = express();
 
@@ -50,6 +52,7 @@ app.use(
     allowedHeaders: [
       'Content-Type',
       'Accept',
+      'X-CSRF-Token',
     ],
   })
 );
@@ -61,6 +64,12 @@ app.use(
 );
 
 app.use(cookieParser());
+app.use(
+  csrfMiddleware({
+    secure: config.cookieSecure,
+    sameSite: config.cookieSameSite,
+  })
+);
 
 app.get('/health', (_req, res) => {
   res.status(200).json({
@@ -86,6 +95,7 @@ app.use(
 app.use('/auth', authRoutes);
 app.use('/system', systemRoutes);
 app.use('/pricing', pricingRoutes);
+app.use('/catalog', catalogRoutes);
 app.use('/orders', orderRoutes);
 app.use('/customers', customerRoutes);
 app.use('/payments', paymentRoutes);

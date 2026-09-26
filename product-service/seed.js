@@ -10,6 +10,9 @@ const catalogData = [
   {
     name: "The Executive Desk Mat",
     slug: "executive-desk-mat",
+    sku: "CD-ACC-001",
+    quantity: 25,
+    manualOutOfStock: false,
     price: 45.00,
     category: "Accessories",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/executive-desk-mat.jpg",
@@ -20,6 +23,9 @@ const catalogData = [
   {
     name: "Wireless Charging Pad Pro",
     slug: "wireless-charging-pad-pro",
+    sku: "CD-ACC-002",
+    quantity: 20,
+    manualOutOfStock: false,
     price: 65.00,
     category: "Accessories",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/wireless-charging-pad-pro.jpg",
@@ -30,6 +36,9 @@ const catalogData = [
   {
     name: "Ergonomic Walnut Wrist Rest",
     slug: "ergonomic-walnut-wrist-rest",
+    sku: "CD-ACC-003",
+    quantity: 18,
+    manualOutOfStock: false,
     price: 35.00,
     category: "Accessories",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/ergonomic-walnut-wrist-rest.jpg",
@@ -42,6 +51,9 @@ const catalogData = [
   {
     name: "Minimalist Monitor Stand",
     slug: "minimalist-monitor-stand",
+    sku: "CD-ORG-001",
+    quantity: 15,
+    manualOutOfStock: false,
     price: 89.00,
     category: "Desk Organizers",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/minimalist-monitor-stand.webp",
@@ -52,6 +64,9 @@ const catalogData = [
   {
     name: "Aluminum Catchall Tray",
     slug: "aluminum-catchall-tray",
+    sku: "CD-ORG-002",
+    quantity: 30,
+    manualOutOfStock: false,
     price: 28.00,
     category: "Desk Organizers",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/aluminum-catchall-tray.jpg",
@@ -62,6 +77,9 @@ const catalogData = [
   {
     name: "Under-Desk Cable Management Grid",
     slug: "under-desk-cable-grid",
+    sku: "CD-ORG-003",
+    quantity: 12,
+    manualOutOfStock: false,
     price: 42.00,
     category: "Desk Organizers",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/under-desk-cable-grid.webp",
@@ -74,6 +92,9 @@ const catalogData = [
   {
     name: "Artisan Keycap Set - Midnight",
     slug: "artisan-keycap-set-midnight",
+    sku: "CD-KC-001",
+    quantity: 14,
+    manualOutOfStock: false,
     price: 120.00,
     category: "Keycaps",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/artisan-keycap-set-midnight.jpg",
@@ -84,6 +105,9 @@ const catalogData = [
   {
     name: "Matcha Green PBT Keycaps",
     slug: "matcha-green-pbt-keycaps",
+    sku: "CD-KC-002",
+    quantity: 22,
+    manualOutOfStock: false,
     price: 85.00,
     category: "Keycaps",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/matcha-green-pbt-keycaps.webp",
@@ -94,6 +118,9 @@ const catalogData = [
   {
     name: "Resin Galaxy Spacebar",
     slug: "resin-galaxy-spacebar",
+    sku: "CD-KC-003",
+    quantity: 0,
+    manualOutOfStock: true,
     price: 45.00,
     category: "Keycaps",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/resin-galaxy-spacebar.jpg",
@@ -106,6 +133,9 @@ const catalogData = [
   {
     name: "Coiled Aviator Cable (USB-C)",
     slug: "coiled-aviator-cable",
+    sku: "CD-TECH-001",
+    quantity: 35,
+    manualOutOfStock: false,
     price: 55.00,
     category: "Tech",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/coiled-aviator-cable.jpg",
@@ -116,6 +146,9 @@ const catalogData = [
   {
     name: "Magnetic Screen Light Bar",
     slug: "magnetic-screen-light-bar",
+    sku: "CD-TECH-002",
+    quantity: 10,
+    manualOutOfStock: false,
     price: 110.00,
     category: "Tech",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/magnetic-screen-light-bar.webp",
@@ -126,6 +159,9 @@ const catalogData = [
   {
     name: "Alloy Headphone Stand",
     slug: "alloy-headphone-stand",
+    sku: "CD-TECH-003",
+    quantity: 16,
+    manualOutOfStock: false,
     price: 48.00,
     category: "Tech",
     image: "https://creatorsdesks-product-images.s3.ap-south-1.amazonaws.com/alloy-headphone-stand.jpg",

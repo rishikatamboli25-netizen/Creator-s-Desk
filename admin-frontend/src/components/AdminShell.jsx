@@ -20,7 +20,7 @@ import { useAdminAuth } from '../context/AdminAuthContext.jsx';
 
 const navItems = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard, permission: 'dashboard.read', group: 'Workspace' },
-  { label: 'Products', to: '/products', icon: Box, permission: 'products.read', group: 'Catalog' },
+  { label: 'Catalog', to: '/catalog', icon: Box, permission: 'products.read', group: 'Catalog' },
   { label: 'Pricing', to: '/pricing', icon: BadgeIndianRupee, permission: 'products.price.read', group: 'Catalog' },
   { label: 'Orders', to: '/orders', icon: ClipboardList, permission: 'orders.read', group: 'Operations' },
   { label: 'Customers', to: '/customers', icon: Users, permission: 'customers.read', group: 'Operations' },

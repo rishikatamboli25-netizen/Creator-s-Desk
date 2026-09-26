@@ -60,4 +60,7 @@ export const config = {
 
   adminInternalSecret:
     process.env.ADMIN_INTERNAL_SECRET || '',
+
+  mfaEncryptionKey:
+    process.env.ADMIN_MFA_ENCRYPTION_KEY || '',
 };

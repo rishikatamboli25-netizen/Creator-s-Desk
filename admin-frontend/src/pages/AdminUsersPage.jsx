@@ -145,12 +145,14 @@ export default function AdminUsersPage() {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteTarget, setInviteTarget] = useState(null);
   const [busyKey, setBusyKey] = useState('');
 
   const load = async () => {
     setError('');
+    setNotice('');
     try {
       const [usersData, rolesData] = await Promise.all([
         adminApi.adminUsers(),
@@ -172,12 +174,14 @@ export default function AdminUsersPage() {
   const suspendedCount = data.users.filter((user) => user.status === 'SUSPENDED').length;
   const invitedCount = data.users.filter((user) => user.status === 'INVITED').length;
 
-  const runAction = async (key, fn) => {
+  const runAction = async (key, fn, successMessage) => {
     setBusyKey(key);
     setError('');
+    setNotice('');
     try {
       await fn();
       await load();
+      setNotice(successMessage);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -188,7 +192,7 @@ export default function AdminUsersPage() {
   const changeRole = (user, nextRoleKey) => {
     if (nextRoleKey === user.roleKey || !canWrite) return;
     if (!window.confirm(`Change ${user.name}'s role to ${roleName[nextRoleKey] || nextRoleKey}?`)) return;
-    runAction(`role:${user.id}`, () => adminApi.updateAdminUserRole(user.id, nextRoleKey));
+    runAction(`role:${user.id}`, () => adminApi.updateAdminUserRole(user.id, nextRoleKey), `Role updated for ${user.name}.`);
   };
 
   const toggleStatus = (user) => {
@@ -196,13 +200,13 @@ export default function AdminUsersPage() {
     const nextStatus = user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
     const action = nextStatus === 'SUSPENDED' ? 'suspend' : 'enable';
     if (!window.confirm(`${action === 'suspend' ? 'Suspend' : 'Enable'} ${user.name}'s admin account?`)) return;
-    runAction(`status:${user.id}`, () => adminApi.updateAdminUserStatus(user.id, nextStatus));
+    runAction(`status:${user.id}`, () => adminApi.updateAdminUserStatus(user.id, nextStatus), `${user.name} is now ${nextStatus === 'SUSPENDED' ? 'suspended' : 'active'}.`);
   };
 
   const revokeSessions = (user) => {
     if (!canWrite || !user.activeSessionCount) return;
     if (!window.confirm(`Revoke all active sessions for ${user.name}?`)) return;
-    runAction(`sessions:${user.id}`, () => adminApi.revokeAdminUserSessions(user.id));
+    runAction(`sessions:${user.id}`, () => adminApi.revokeAdminUserSessions(user.id), `Active sessions revoked for ${user.name}.`);
   };
 
   const reinvite = (user) => {
@@ -228,7 +232,8 @@ export default function AdminUsersPage() {
         )}
       />
 
-      {error && <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</div>}
+      {notice && <div className="mb-4 border border-creator-border bg-creator-white px-4 py-3 text-sm text-creator-black" role="status">{notice}</div>}
 
       <div className="mb-6 grid gap-4 md:grid-cols-3">
         <div className="border border-creator-border bg-creator-white p-6 shadow-panel"><UsersRound size={18} /><div className="mt-6 text-2xl font-semibold tracking-tight">{activeCount}</div><div className="mt-1 text-xs uppercase tracking-[0.14em] text-creator-muted">Active administrators</div></div>
@@ -241,7 +246,7 @@ export default function AdminUsersPage() {
         <div className="overflow-x-auto">
           <table className="min-w-[1050px] w-full text-left">
             <thead className="border-b border-creator-border bg-creator-surface">
-              <tr>{['Administrator', 'Role', 'Status', 'Sessions', 'Last login', 'Created', 'Actions'].map((heading) => <th key={heading} className="px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-creator-faint">{heading}</th>)}</tr>
+              <tr>{['Administrator', 'Role', 'MFA', 'Status', 'Sessions', 'Last login', 'Created', 'Actions'].map((heading) => <th key={heading} className="px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-creator-faint">{heading}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-creator-border">
               {data.users.map((user) => {
@@ -251,6 +256,11 @@ export default function AdminUsersPage() {
                   <tr key={user.id} className="hover:bg-creator-surface/60">
                     <td className="px-5 py-4"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full border border-creator-border bg-creator-surface"><UserRound size={15} /></div><div><div className="text-sm font-semibold text-creator-black">{user.name}{isSelf && <span className="ml-2 text-[10px] font-medium uppercase tracking-[0.12em] text-creator-faint">You</span>}</div><div className="mt-1 text-xs text-creator-muted">{user.email}</div></div></div></td>
                     <td className="px-5 py-4">{user.status === 'INVITED' ? <span className="text-sm text-creator-black">{roleName[user.roleKey] || user.roleKey}</span> : <select value={user.roleKey} disabled={!canWrite || isSelf || busy} onChange={(event) => changeRole(user, event.target.value)} className="border border-creator-border bg-creator-white px-2.5 py-2 text-xs outline-none focus:border-creator-black disabled:opacity-50">{roles.map((role) => <option key={role.key} value={role.key}>{role.name}</option>)}</select>}</td>
+                    <td className="px-5 py-4">
+                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${user.mfaEnabled ? 'border-creator-border bg-creator-black text-creator-white' : 'border-creator-border bg-creator-surface text-creator-muted'}`}>
+                        {user.mfaEnabled ? 'Enabled' : 'Off'}
+                      </span>
+                    </td>
                     <td className="px-5 py-4"><StatusBadge status={user.status} /></td>
                     <td className="px-5 py-4"><div className="text-sm font-medium text-creator-black">{user.activeSessionCount}</div>{user.activeSessionCount > 0 && <div className="mt-1 text-[10px] uppercase tracking-[0.1em] text-creator-faint">Active</div>}</td>
                     <td className="px-5 py-4 text-xs text-creator-muted">{formatDate(user.lastLoginAt)}</td>

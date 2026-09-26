@@ -5,6 +5,9 @@ import {
   KeyRound,
   LoaderCircle,
   LockKeyhole,
+  Copy,
+  Eye,
+  EyeOff,
   Save,
   ShieldCheck,
   UserCircle2,
@@ -13,6 +16,7 @@ import {
 import { useAdminAuth } from '../context/AdminAuthContext.jsx';
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import { adminApi } from '../lib/api.js';
+import MfaQrCode from '../components/MfaQrCode.jsx';
 
 const SETTING_ORDER = [
   'ADMIN_SESSION_HOURS',
@@ -61,6 +65,18 @@ export default function SettingsPage() {
     confirmPassword: '',
   });
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordNotice, setPasswordNotice] = useState('');
+
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaCurrentPassword, setMfaCurrentPassword] = useState('');
+  const [mfaOtp, setMfaOtp] = useState('');
+  const [mfaSetup, setMfaSetup] = useState(null);
+  const [showMfaSetupKey, setShowMfaSetupKey] = useState(false);
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState([]);
+  const [mfaRecoveryVisible, setMfaRecoveryVisible] = useState(false);
+  const [mfaRecoveryPassword, setMfaRecoveryPassword] = useState('');
+  const [mfaRecoveryOtp, setMfaRecoveryOtp] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -199,6 +215,8 @@ export default function SettingsPage() {
   const updatePasswordDraft = (key, value) => {
     setError('');
     setNotice('');
+    setPasswordError('');
+    setPasswordNotice('');
     setPasswordDraft((current) => ({ ...current, [key]: value }));
   };
 
@@ -206,22 +224,25 @@ export default function SettingsPage() {
     event.preventDefault();
     if (!changingPassword || passwordSaving) return;
 
+    setError('');
+    setNotice('');
+    setPasswordError('');
+    setPasswordNotice('');
+
     if (!passwordDraft.currentPassword || !passwordDraft.newPassword) {
-      setError('Current password and new password are required.');
+      setPasswordError('Current password and new password are required.');
       return;
     }
     if (passwordDraft.newPassword !== passwordDraft.confirmPassword) {
-      setError('New password and confirmation do not match.');
+      setPasswordError('New password and confirmation do not match.');
       return;
     }
     if (passwordDraft.newPassword.length < passwordMinLength) {
-      setError(`New password must be at least ${passwordMinLength} characters.`);
+      setPasswordError(`New password must be at least ${passwordMinLength} characters.`);
       return;
     }
 
     setPasswordSaving(true);
-    setError('');
-    setNotice('');
 
     try {
       const data = await adminApi.changeMyPassword({
@@ -231,8 +252,9 @@ export default function SettingsPage() {
       setPasswordDraft({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setChangingPassword(false);
       setNotice(data.message || 'Password changed successfully.');
+      setPasswordNotice(data.message || 'Password changed successfully.');
     } catch (err) {
-      setError(err.message);
+      setPasswordError(err.message);
     } finally {
       setPasswordSaving(false);
     }
@@ -242,6 +264,106 @@ export default function SettingsPage() {
     setPasswordDraft({ currentPassword: '', newPassword: '', confirmPassword: '' });
     setChangingPassword(false);
     setError('');
+    setPasswordError('');
+    setPasswordNotice('');
+  };
+
+
+  const startMfaSetup = async () => {
+    if (!mfaCurrentPassword || mfaLoading) {
+      setError('Enter your current password to start MFA setup.');
+      return;
+    }
+
+    setMfaLoading(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = await adminApi.mfaSetup(mfaCurrentPassword);
+      setMfaSetup(data);
+      setShowMfaSetupKey(false);
+      setMfaOtp('');
+      setNotice('MFA setup is ready. Add the account to your authenticator app and verify the code.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const enableMfa = async (event) => {
+    event.preventDefault();
+    if (!mfaSetup || !mfaCurrentPassword || !mfaOtp || mfaLoading) return;
+
+    setMfaLoading(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = await adminApi.enableMfa({
+        currentPassword: mfaCurrentPassword,
+        otp: mfaOtp,
+      });
+      setMfaSetup(null);
+      setMfaCurrentPassword('');
+      setMfaOtp('');
+      setMfaRecoveryCodes(data.recoveryCodes || []);
+      setMfaRecoveryVisible(true);
+      setNotice('MFA is enabled. Save the recovery codes before leaving this page.');
+      await refreshAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const disableMfa = async () => {
+    if (!mfaCurrentPassword || !mfaOtp || mfaLoading) {
+      setError('Enter your current password and MFA code to disable MFA.');
+      return;
+    }
+
+    setMfaLoading(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = await adminApi.disableMfa({
+        currentPassword: mfaCurrentPassword,
+        otp: mfaOtp,
+      });
+      setMfaCurrentPassword('');
+      setMfaOtp('');
+      setNotice(data.message || 'MFA disabled.');
+      await refreshAdmin();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const regenerateRecoveryCodes = async (event) => {
+    event.preventDefault();
+    if (!mfaRecoveryPassword || !mfaRecoveryOtp || mfaLoading) return;
+
+    setMfaLoading(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = await adminApi.regenerateMfaRecoveryCodes({
+        currentPassword: mfaRecoveryPassword,
+        otp: mfaRecoveryOtp,
+      });
+      setMfaRecoveryPassword('');
+      setMfaRecoveryOtp('');
+      setMfaRecoveryCodes(data.recoveryCodes || []);
+      setMfaRecoveryVisible(true);
+      setNotice('New MFA recovery codes generated. Previous recovery codes are no longer valid.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setMfaLoading(false);
+    }
   };
 
   if (loading) {
@@ -428,7 +550,7 @@ export default function SettingsPage() {
               {!changingPassword && (
                 <button
                   type="button"
-                  onClick={() => { setChangingPassword(true); setEditingAccount(false); setNotice(''); setError(''); }}
+                  onClick={() => { setChangingPassword(true); setEditingAccount(false); setNotice(''); setError(''); setPasswordError(''); setPasswordNotice(''); }}
                   className="rounded-md border border-creator-border px-4 py-2.5 text-sm font-semibold text-creator-black hover:bg-creator-surface"
                 >
                   Change password
@@ -436,8 +558,12 @@ export default function SettingsPage() {
               )}
             </div>
 
+            {(passwordError && changingPassword) && <div className="mt-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{passwordError}</div>}
+            {passwordNotice && <div className="mt-4 border border-creator-border bg-creator-white px-4 py-3 text-sm text-creator-black" role="status">{passwordNotice}</div>}
+
             {changingPassword && (
-              <form onSubmit={savePassword} className="mt-5 grid gap-4 md:grid-cols-3">
+              <>
+                <form onSubmit={savePassword} className="mt-5 grid gap-4 md:grid-cols-3">
                 <label className="text-sm font-medium text-creator-black">
                   Current password
                   <input type="password" value={passwordDraft.currentPassword} onChange={(event) => updatePasswordDraft('currentPassword', event.target.value)} autoComplete="current-password" className="mt-2 w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" />
@@ -459,11 +585,144 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </form>
+              </>
             )}
           </div>
         </section>
 
-        <section className="mt-4 border border-creator-border bg-creator-white p-6 shadow-panel">
+  
+      <section className="mt-4 border border-creator-border bg-creator-white p-6 shadow-panel">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3"><ShieldCheck size={18} /><h2 className="text-sm font-semibold text-creator-black">Multi-factor authentication</h2></div>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-creator-muted">Protect the admin account with a time-based one-time password. Recovery codes are shown only when generated and are never stored in plaintext.</p>
+          </div>
+          <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${admin?.mfaEnabled ? 'border-creator-border bg-creator-black text-creator-white' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+            <ShieldCheck size={14} /> {admin?.mfaEnabled ? 'MFA enabled' : 'MFA not enabled'}
+          </span>
+        </div>
+
+        {!admin?.mfaEnabled ? (
+          <div className="mt-5 border border-creator-border bg-creator-surface p-5">
+            {!mfaSetup ? (
+              <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+                <label className="text-sm font-medium text-creator-black">
+                  Current password
+                  <input type="password" value={mfaCurrentPassword} onChange={(event) => setMfaCurrentPassword(event.target.value)} autoComplete="current-password" className="mt-2 w-full border border-creator-border bg-creator-white px-3 py-3 text-sm outline-none focus:border-creator-black" placeholder="Required to begin MFA setup" />
+                </label>
+                <button type="button" onClick={startMfaSetup} disabled={mfaLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-creator-black px-5 text-sm font-semibold text-creator-white disabled:opacity-40">
+                  {mfaLoading ? <LoaderCircle size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+                  Set up MFA
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={enableMfa} className="space-y-6">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-creator-faint">Authenticator setup</div>
+                  <h3 className="mt-2 text-base font-semibold text-creator-black">Secure your admin account with an authenticator app</h3>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-creator-muted">Scan the QR code with your authenticator app, then enter the six-digit verification code it generates. MFA becomes active only after verification succeeds.</p>
+                </div>
+
+                <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
+                  <div className="flex min-h-[260px] items-center justify-center border border-creator-border bg-white p-5">
+                    <MfaQrCode value={mfaSetup.otpauthUri} />
+                  </div>
+
+                  <div className="space-y-5 border border-creator-border bg-creator-white p-5">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">1 · Scan this code</div>
+                      <p className="mt-2 text-sm leading-6 text-creator-muted">Open your authenticator app and scan the QR code shown here.</p>
+                    </div>
+
+                    <div className="border-t border-creator-border pt-5">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">2 · Can't scan?</div>
+                      <button
+                        type="button"
+                        onClick={() => setShowMfaSetupKey((current) => !current)}
+                        className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-creator-black hover:underline"
+                        aria-expanded={showMfaSetupKey}
+                      >
+                        {showMfaSetupKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                        {showMfaSetupKey ? 'Hide setup key' : 'Show setup key'}
+                      </button>
+
+                      {showMfaSetupKey && (
+                        <div className="mt-3 border border-creator-border bg-creator-surface p-4">
+                          <div className="break-all font-mono text-sm font-semibold tracking-[0.1em] text-creator-black">{mfaSetup.secret}</div>
+                          <button
+                            type="button"
+                            onClick={() => navigator.clipboard?.writeText(mfaSetup.secret)}
+                            className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-creator-muted hover:text-creator-black"
+                          >
+                            <Copy size={13} /> Copy setup key
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-creator-border pt-5">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">Account</div>
+                      <div className="mt-2 text-sm font-medium text-creator-black">{admin?.email}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-creator-border pt-5">
+                  <div className="grid gap-4 md:grid-cols-[1fr_220px] md:items-end">
+                    <label className="text-sm font-medium text-creator-black">
+                      3 · Verification code
+                      <input value={mfaOtp} onChange={(event) => setMfaOtp(event.target.value.replace(/[^0-9]/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" className="mt-2 w-full border border-creator-border bg-creator-white px-3 py-3 text-sm tracking-[0.15em] outline-none focus:border-creator-black" placeholder="Enter 6-digit code" aria-describedby="mfa-verification-help" />
+                    </label>
+                    <div id="mfa-verification-help" className="text-xs leading-5 text-creator-muted">Use the code currently displayed in your authenticator app.</div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => { setMfaSetup(null); setShowMfaSetupKey(false); setMfaOtp(''); }} className="rounded-md border border-creator-border px-4 py-2.5 text-sm font-medium text-creator-muted hover:bg-creator-white">Cancel setup</button>
+                  <button type="submit" disabled={mfaLoading || mfaOtp.length !== 6} className="inline-flex items-center gap-2 rounded-md bg-creator-black px-4 py-2.5 text-sm font-semibold text-creator-white disabled:opacity-40">{mfaLoading && <LoaderCircle size={15} className="animate-spin" />} Enable MFA</button>
+                </div>
+              </form>
+            )}
+          </div>
+        ) : (
+          <div className="mt-5 space-y-5">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="border border-creator-border bg-creator-surface p-4"><div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">Account</div><div className="mt-2 text-sm font-semibold text-creator-black">Protected with TOTP</div></div>
+              <div className="border border-creator-border bg-creator-surface p-4"><div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">Recovery codes</div><div className="mt-2 text-sm font-semibold text-creator-black">{mfaRecoveryCodes.length ? 'Available in this session' : 'Stored as one-time hashes'}</div></div>
+              <div className="border border-creator-border bg-creator-surface p-4"><div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">Session safety</div><div className="mt-2 text-sm font-semibold text-creator-black">Other sessions revoked on disable</div></div>
+            </div>
+
+            {mfaRecoveryVisible && mfaRecoveryCodes.length ? (
+              <div className="border border-amber-200 bg-amber-50 p-5">
+                <div className="flex items-center justify-between gap-4"><div><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800">Save these now</div><p className="mt-2 text-sm text-amber-900">Each recovery code can be used once. This screen will not show them again after you leave it.</p></div><button type="button" onClick={() => setMfaRecoveryVisible(false)} className="text-xs font-semibold text-amber-900">Hide</button></div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{mfaRecoveryCodes.map((code) => <div key={code} className="border border-amber-200 bg-white px-3 py-2 text-center font-mono text-sm font-semibold tracking-[0.08em] text-amber-950">{code}</div>)}</div>
+              </div>
+            ) : null}
+
+            <div className="border-t border-creator-border pt-5">
+              <div className="text-sm font-semibold text-creator-black">Regenerate recovery codes</div>
+              <p className="mt-1 text-sm text-creator-muted">This invalidates every previous recovery code.</p>
+              <form onSubmit={regenerateRecoveryCodes} className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="text-sm font-medium text-creator-black">Current password<input type="password" value={mfaRecoveryPassword} onChange={(event) => setMfaRecoveryPassword(event.target.value)} autoComplete="current-password" className="mt-2 w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" /></label>
+                <label className="text-sm font-medium text-creator-black">Authenticator code<input value={mfaRecoveryOtp} onChange={(event) => setMfaRecoveryOtp(event.target.value.replace(/[^0-9]/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" className="mt-2 w-full border border-creator-border px-3 py-3 text-sm tracking-[0.15em] outline-none focus:border-creator-black" /></label>
+                <div className="flex justify-end md:col-span-2"><button type="submit" disabled={mfaLoading || mfaRecoveryOtp.length !== 6} className="rounded-md border border-creator-border px-4 py-2.5 text-sm font-semibold text-creator-black hover:bg-creator-surface disabled:opacity-40">Regenerate codes</button></div>
+              </form>
+            </div>
+
+            <div className="border-t border-red-200 pt-5">
+              <div className="text-sm font-semibold text-creator-black">Disable MFA</div>
+              <p className="mt-1 text-sm text-creator-muted">Requires the current password and a valid authenticator or recovery code. Other admin sessions are revoked.</p>
+              <div className="mt-4 grid gap-4 md:grid-cols-3 md:items-end">
+                <label className="text-sm font-medium text-creator-black">Current password<input type="password" value={mfaCurrentPassword} onChange={(event) => setMfaCurrentPassword(event.target.value)} autoComplete="current-password" className="mt-2 w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" /></label>
+                <label className="text-sm font-medium text-creator-black">Authenticator / recovery code<input value={mfaOtp} onChange={(event) => setMfaOtp(event.target.value)} autoComplete="one-time-code" className="mt-2 w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" /></label>
+                <button type="button" onClick={disableMfa} disabled={mfaLoading} className="h-11 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-40">Disable MFA</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-4 border border-creator-border bg-creator-white p-6 shadow-panel">
           <div className="flex items-center gap-3"><ShieldCheck size={18} /><h2 className="text-sm font-semibold text-creator-black">Security posture</h2></div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             {[

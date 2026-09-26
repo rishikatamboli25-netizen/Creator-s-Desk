@@ -193,7 +193,7 @@ const ProductDetail = () => {
           <h1 className="text-4xl md:text-5xl font-light tracking-tighter mb-4">
             {product.name}
           </h1>
-          <div className="text-2xl font-medium mb-8">${product.price.toFixed(2)}</div>
+          <div className="text-2xl font-medium mb-8">₹{product.price.toFixed(2)}</div>
 
           {/* Action Buttons */}
           <div className="space-y-4 mb-12">

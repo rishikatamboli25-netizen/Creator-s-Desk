@@ -1,0 +1,3 @@
+# CD_ADMIN enterprise hardening
+# Generate a random value of at least 32 characters and keep it only in the admin-backend environment.
+ADMIN_MFA_ENCRYPTION_KEY=<generate-a-long-random-secret>

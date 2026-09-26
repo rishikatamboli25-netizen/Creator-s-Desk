@@ -114,7 +114,7 @@ const CartDrawer = () => {
                   </div>
                   <div className="flex justify-between items-center mt-2">
                     <span className="text-sm font-medium">
-                      ${(item.price * item.quantity).toFixed(2)}
+                      ₹{(item.price * item.quantity).toFixed(2)}
                     </span>
                     <button
                       onClick={() => removeFromCart(item.id)}

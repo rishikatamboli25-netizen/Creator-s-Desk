@@ -2,6 +2,10 @@ export const PERMISSIONS = Object.freeze({
   DASHBOARD_READ: 'dashboard.read',
 
   PRODUCTS_READ: 'products.read',
+  PRODUCTS_WRITE: 'products.write',
+  PRODUCTS_STOCK_WRITE: 'products.stock.write',
+  PRODUCTS_AVAILABILITY_WRITE: 'products.availability.write',
+  PRODUCTS_BULK_CREATE: 'products.bulk.create',
   PRODUCTS_PRICE_READ: 'products.price.read',
   PRODUCTS_PRICE_WRITE: 'products.price.write',
 
@@ -35,6 +39,10 @@ export const ROLE_DEFINITIONS = Object.freeze({
     permissions: [
       PERMISSIONS.DASHBOARD_READ,
       PERMISSIONS.PRODUCTS_READ,
+      PERMISSIONS.PRODUCTS_WRITE,
+      PERMISSIONS.PRODUCTS_STOCK_WRITE,
+      PERMISSIONS.PRODUCTS_AVAILABILITY_WRITE,
+      PERMISSIONS.PRODUCTS_BULK_CREATE,
       PERMISSIONS.PRODUCTS_PRICE_READ,
       PERMISSIONS.PRODUCTS_PRICE_WRITE,
       PERMISSIONS.ORDERS_READ,
@@ -50,10 +58,14 @@ export const ROLE_DEFINITIONS = Object.freeze({
   },
   CATALOG_MANAGER: {
     name: 'Catalog Manager',
-    description: 'Catalog and product pricing management.',
+    description: 'Catalog, inventory and product pricing management.',
     permissions: [
       PERMISSIONS.DASHBOARD_READ,
       PERMISSIONS.PRODUCTS_READ,
+      PERMISSIONS.PRODUCTS_WRITE,
+      PERMISSIONS.PRODUCTS_STOCK_WRITE,
+      PERMISSIONS.PRODUCTS_AVAILABILITY_WRITE,
+      PERMISSIONS.PRODUCTS_BULK_CREATE,
       PERMISSIONS.PRODUCTS_PRICE_READ,
       PERMISSIONS.PRODUCTS_PRICE_WRITE,
       PERMISSIONS.ORDERS_READ,

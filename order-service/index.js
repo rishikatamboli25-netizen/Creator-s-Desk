@@ -20,33 +20,208 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 5003;
 const DEFAULT_SHIPPING_CHARGE = 20;
+const PRODUCT_SERVICE_URL = (
+  process.env.PRODUCT_SERVICE_URL ||
+  'http://localhost:5002'
+).replace(/\/$/, '');
+
+const callProductService = async (path, options = {}) => {
+  const secret = String(process.env.ADMIN_INTERNAL_SECRET || '');
+  if (!secret) {
+    const error = new Error('ADMIN_INTERNAL_SECRET is not configured on Order Service.');
+    error.status = 503;
+    throw error;
+  }
+
+  const response = await fetch(`${PRODUCT_SERVICE_URL}${path}`, {
+    ...options,
+    headers: {
+      Accept: 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      'x-admin-internal-secret': secret,
+      ...(options.headers || {}),
+    },
+  });
+
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text || 'Invalid response from Product Service.' };
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      data?.error || `Product Service request failed (${response.status}).`
+    );
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+};
+
+const reservationItemsToOrderItems = (reservation) =>
+  (reservation?.items || []).map((item) => ({
+    productId: item.productId,
+    sku: item.sku || null,
+    name: item.name,
+    price: Number(item.unitPrice || 0),
+    quantity: Number(item.quantity || 0),
+  }));
+
+const getReservation = async (reservationId, userId) => {
+  return callProductService(
+    `/internal/inventory/reservations/${encodeURIComponent(reservationId)}?userId=${encodeURIComponent(userId)}`
+  );
+};
+
+const attachReservationOrder = async (reservationId, userId, orderId) =>
+  callProductService(
+    `/internal/inventory/reservations/${encodeURIComponent(reservationId)}/attach-order`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ userId, orderId }),
+    }
+  );
+
+const commitReservation = async (reservationId, userId, orderId) =>
+  callProductService(
+    `/internal/inventory/reservations/${encodeURIComponent(reservationId)}/commit`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ userId, orderId }),
+    }
+  );
+
+const releaseReservation = async (reservationId, userId, reason, allowCommitted = false) =>
+  callProductService(
+    `/internal/inventory/reservations/${encodeURIComponent(reservationId)}/release`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ userId, reason, allowCommitted }),
+    }
+  );
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function commitReservationWithRetry(order) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      await attachReservationOrder(
+        order.inventoryReservationId,
+        order.userId,
+        order._id.toString()
+      );
+      await commitReservation(
+        order.inventoryReservationId,
+        order.userId,
+        order._id.toString()
+      );
+      return true;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 4) await sleep(250 * attempt);
+    }
+  }
+
+  throw lastError || new Error('Unable to commit inventory reservation.');
+}
 
 function generateInvoiceNumber() {
   return crypto.randomInt(100000000000, 1000000000000).toString();
 }
 
-mongoose
-  .connect(
-    process.env.MONGO_URI_ORDERS ||
-      'mongodb://localhost:27017/creatorsdesk_orders'
-  )
-  .then(() => console.log('✅ Order Service DB Connected'))
-  .catch((err) => console.error('❌ Order DB Connection Error:', err));
+const migrateLegacyOrders = async () => {
+  const result = await Order.updateMany(
+    { inventoryStatus: { $exists: false } },
+    { $set: { inventoryStatus: 'COMMITTED' } }
+  );
+
+  if (result.modifiedCount) {
+    console.log(
+      `[Order Service] Migrated ${result.modifiedCount} legacy orders to committed inventory state.`
+    );
+  }
+};
+
+// RESERVE INVENTORY FOR A CHECKOUT
+app.post('/inventory/reserve', requireAuth, async (req, res) => {
+  try {
+    const { items, checkoutId } = req.body || {};
+
+    if (!checkoutId || String(checkoutId).length > 200) {
+      return res.status(400).json({ error: 'A checkout ID is required.' });
+    }
+
+    const result = await callProductService('/internal/inventory/reservations', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId: req.user.userId,
+        items,
+        idempotencyKey: checkoutId,
+        checkoutId,
+      }),
+    });
+
+    return res.status(result.idempotent ? 200 : 201).json(result);
+  } catch (error) {
+    console.error('[Order Service] Inventory reservation error:', error);
+    return res.status(error.status || 500).json({
+      error: error.message || 'Unable to reserve inventory.',
+    });
+  }
+});
+
+// RELEASE INVENTORY WHEN A CHECKOUT IS ABANDONED BEFORE ORDER CREATION
+app.post('/inventory/reserve/:reservationId/release', requireAuth, async (req, res) => {
+  try {
+    const reservationResult = await getReservation(
+      req.params.reservationId,
+      req.user.userId
+    );
+    const reservation = reservationResult.reservation;
+
+    if (reservation?.orderId) {
+      return res.status(409).json({
+        error: 'This inventory reservation is already attached to an order and cannot be released from checkout.',
+      });
+    }
+
+    const result = await releaseReservation(
+      req.params.reservationId,
+      req.user.userId,
+      String(req.body?.reason || 'Checkout reservation released.').trim(),
+      false
+    );
+    return res.status(200).json(result);
+  } catch (error) {
+    console.error('[Order Service] Inventory release error:', error);
+    return res.status(error.status || 500).json({
+      error: error.message || 'Unable to release inventory reservation.',
+    });
+  }
+});
 
 // CREATE A NEW ORDER
 app.post('/', requireAuth, async (req, res) => {
   try {
     const {
-      items,
-      totalAmount,
+      inventoryReservationId,
+      checkoutId,
       shippingAddress,
       paymentMethod,
       paymentId,
       customerName,
     } = req.body;
 
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Cart is empty' });
+    if (!inventoryReservationId || !checkoutId) {
+      return res.status(400).json({
+        error: 'A valid inventory reservation and checkout ID are required.',
+      });
     }
 
     if (!paymentMethod || !['COD', 'ONLINE'].includes(paymentMethod)) {
@@ -57,8 +232,56 @@ app.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Customer name is required' });
     }
 
+    if (paymentMethod === 'ONLINE' && !paymentId) {
+      return res.status(400).json({ error: 'Online payment ID is required.' });
+    }
+
+    const existingOrder = await Order.findOne({
+      checkoutId: String(checkoutId),
+    });
+
+    if (existingOrder) {
+      return res.status(200).json({
+        message: 'Order already exists for this checkout.',
+        orderId: existingOrder._id,
+        status: existingOrder.status,
+        inventoryStatus: existingOrder.inventoryStatus,
+        document: existingOrder.document,
+      });
+    }
+
+    const reservationResponse = await getReservation(
+      inventoryReservationId,
+      req.user.userId
+    );
+    const reservation = reservationResponse.reservation;
+
+    if (
+      !reservation ||
+      String(reservation.checkoutId || '') !== String(checkoutId)
+    ) {
+      return res.status(409).json({
+        error: 'Inventory reservation does not match this checkout.'
+      });
+    }
+
+    if (reservation.status !== 'ACTIVE') {
+      return res.status(409).json({
+        error: `Inventory reservation is ${String(reservation?.status || 'unavailable').toLowerCase()}. Please return to cart and try again.`,
+      });
+    }
+
+    const items = reservationItemsToOrderItems(reservation);
+    const subtotal = Number(reservation.subtotal || 0);
+    const totalAmount = Math.round(
+      (subtotal + DEFAULT_SHIPPING_CHARGE) * 100
+    ) / 100;
+
     const newOrder = await Order.create({
       userId: req.user.userId,
+      checkoutId: String(checkoutId),
+      inventoryReservationId: String(inventoryReservationId),
+      inventoryStatus: 'RESERVED',
       items,
       totalAmount,
       shippingAddress,
@@ -69,7 +292,19 @@ app.post('/', requireAuth, async (req, res) => {
       'document.invoiceNumber': generateInvoiceNumber(),
     });
 
-    // Publish only authoritative, persisted order data.
+    try {
+      await commitReservationWithRetry(newOrder);
+      newOrder.inventoryStatus = 'COMMITTED';
+      await newOrder.save();
+    } catch (inventoryError) {
+      newOrder.inventoryStatus = 'COMMIT_PENDING';
+      await newOrder.save();
+      console.error(
+        '[Order Service] Inventory commit pending:',
+        inventoryError.message
+      );
+    }
+
     try {
       await publishEvent('order.created', {
         orderId: newOrder._id.toString(),
@@ -82,23 +317,41 @@ app.post('/', requireAuth, async (req, res) => {
         shippingCharge: newOrder.shippingCharge,
         totalAmount: newOrder.totalAmount,
         invoiceNumber: newOrder.document?.invoiceNumber,
+        inventoryStatus: newOrder.inventoryStatus,
         createdAt: newOrder.createdAt,
       });
     } catch (eventError) {
       console.error('⚠️ Failed to publish order.created:', eventError);
     }
 
-    res.status(201).json({
+    return res.status(201).json({
       message: 'Order placed successfully!',
       orderId: newOrder._id,
       status: newOrder.status,
+      inventoryStatus: newOrder.inventoryStatus,
       document: newOrder.document,
+      totalAmount: newOrder.totalAmount,
     });
   } catch (error) {
     console.error('Checkout Error:', error);
 
-    res.status(500).json({
-      error: 'Failed to process order',
+    if (error?.code === 11000 && req.body?.checkoutId) {
+      const existingOrder = await Order.findOne({
+        checkoutId: String(req.body.checkoutId),
+      });
+      if (existingOrder) {
+        return res.status(200).json({
+          message: 'Order already exists for this checkout.',
+          orderId: existingOrder._id,
+          status: existingOrder.status,
+          inventoryStatus: existingOrder.inventoryStatus,
+          document: existingOrder.document,
+        });
+      }
+    }
+
+    return res.status(error.status || 500).json({
+      error: error.message || 'Failed to process order',
     });
   }
 });
@@ -219,6 +472,7 @@ app.patch(
     try {
       const { status } = req.body || {};
       const allowedStatuses = [
+        'Pending Payment',
         'Processing',
         'Shipped',
         'Delivered',
@@ -240,12 +494,51 @@ app.patch(
 
       const previousStatus = order.status;
 
+      if (previousStatus === 'Shipped' || previousStatus === 'Delivered') {
+        if (status === 'Cancelled') {
+          return res.status(409).json({
+            error: 'Orders that have shipped or been delivered cannot be cancelled.',
+          });
+        }
+      }
+
+      if (
+        (status === 'Shipped' || status === 'Delivered') &&
+        order.inventoryStatus !== 'COMMITTED'
+      ) {
+        return res.status(409).json({
+          error: 'Inventory must be committed before an order can be shipped or delivered.',
+        });
+      }
+
       if (previousStatus === status) {
         return res.status(200).json({
           message: 'Order status is already set to the requested value.',
           previousStatus,
           order,
         });
+      }
+
+      if (status === 'Cancelled') {
+        if (order.inventoryReservationId && order.inventoryStatus !== 'RELEASED') {
+          try {
+            await releaseReservation(
+              order.inventoryReservationId,
+              order.userId,
+              'Order cancelled by an authorized administrator.',
+              true
+            );
+            order.inventoryStatus = 'RELEASED';
+          } catch (inventoryError) {
+            console.error(
+              '[Order Service] Order cancellation inventory release failed:',
+              inventoryError.message
+            );
+            return res.status(inventoryError.status || 502).json({
+              error: inventoryError.message || 'Unable to release inventory for this order.',
+            });
+          }
+        }
       }
 
       order.status = status;
@@ -588,10 +881,77 @@ app.get('/health', (req, res) => {
   });
 });
 
+async function reconcilePendingInventoryCommits() {
+  const pendingOrders = await Order.find({
+    inventoryStatus: 'COMMIT_PENDING',
+    status: { $ne: 'Cancelled' },
+  })
+    .sort({ updatedAt: 1 })
+    .limit(50);
+
+  for (const order of pendingOrders) {
+    try {
+      const current = await Order.findOne({
+        _id: order._id,
+        inventoryStatus: 'COMMIT_PENDING',
+        status: { $ne: 'Cancelled' },
+      });
+
+      if (!current) continue;
+
+      await commitReservationWithRetry(current);
+
+      const committed = await Order.findOneAndUpdate(
+        {
+          _id: current._id,
+          inventoryStatus: 'COMMIT_PENDING',
+          status: { $ne: 'Cancelled' },
+        },
+        { $set: { inventoryStatus: 'COMMITTED' } },
+        { new: true }
+      );
+
+      if (committed) {
+        console.log(
+          `[Order Service] Inventory commit reconciled for order ${current._id}.`
+        );
+      }
+    } catch (error) {
+      console.error(
+        `[Order Service] Inventory commit still pending for order ${order._id}:`,
+        error.message
+      );
+    }
+  }
+}
 async function startServer() {
+  try {
+    await mongoose.connect(
+      process.env.MONGO_URI_ORDERS ||
+        'mongodb://localhost:27017/creatorsdesk_orders'
+    );
+    console.log('✅ Order Service DB Connected');
+    await migrateLegacyOrders();
+  } catch (error) {
+    console.error('❌ Order DB Connection Error:', error);
+    process.exit(1);
+  }
+
   startInvoiceGeneratedConsumer().catch((error) => {
     console.error('⚠️ SQS consumer unavailable:', error.message);
   });
+
+  setTimeout(() => {
+    reconcilePendingInventoryCommits().catch((error) =>
+      console.error('[Order Service] Initial inventory reconciliation error:', error.message)
+    );
+  }, 5000).unref();
+
+  setInterval(() => {
+    reconcilePendingInventoryCommits().catch((error) =>
+      console.error('[Order Service] Inventory reconciliation error:', error.message)
+    );
+  }, 30_000).unref();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🛒 Order Service running on port ${PORT}`);
