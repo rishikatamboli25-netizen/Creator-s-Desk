@@ -6,7 +6,7 @@ import { AdminAuthProvider } from './context/AdminAuthContext.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import ActivateAdminPage from './pages/ActivateAdminPage.jsx';
-import CatalogPage from './pages/CatalogPage.jsx';
+import ProductsPage from './pages/ProductsPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
 import OrdersPage from './pages/OrdersPage.jsx';
 import CustomersPage from './pages/CustomersPage.jsx';
@@ -26,11 +26,11 @@ export default function App() {
       <AdminAuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/Login" element={<Navigate to="/login" replace />} />
           <Route path="/activate-admin" element={<ActivateAdminPage />} />
           <Route element={<ProtectedApp />}>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/catalog" element={<CatalogPage />} />
-            <Route path="/products" element={<Navigate to="/catalog" replace />} />
+            <Route path="/products" element={<ProductsPage />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/customers" element={<CustomersPage />} />

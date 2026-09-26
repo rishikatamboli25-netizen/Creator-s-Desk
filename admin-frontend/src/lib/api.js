@@ -1,22 +1,12 @@
 const GATEWAY_URL =
-  process.env.VITE_GATEWAY_URL ||
+  import.meta.env.VITE_GATEWAY_URL ||
   'http://localhost:5000';
 
-console.log(GATEWAY_URL)
-
 const ADMIN_API_URL =
-  process.env.VITE_ADMIN_API_URL ||
+  import.meta.env.VITE_ADMIN_API_URL ||
   `${GATEWAY_URL}/api/admin`;
 
-const readCookie = (name) => {
-  const match = document.cookie
-    .split('; ')
-    .find((row) => row.startsWith(`${name}=`));
-
-  return match ? decodeURIComponent(match.slice(name.length + 1)) : '';
-};
-
-const getCsrfToken = () => readCookie('cd_admin_csrf');
+import { clearCsrfToken, ensureCsrfToken, getCsrfHeaders } from './csrf.js';
 
 async function parseResponse(response) {
   const contentType =
@@ -38,27 +28,34 @@ async function request(
 ) {
   const method = String(options.method || 'GET').toUpperCase();
   const shouldSendCsrf = includeCredentials && !['GET', 'HEAD', 'OPTIONS'].includes(method);
-  const csrfToken = shouldSendCsrf ? getCsrfToken() : '';
+  if (shouldSendCsrf) {
+    await ensureCsrfToken(ADMIN_API_URL);
+  }
 
-  const response = await fetch(url, {
+  const buildOptions = () => ({
     ...options,
-    ...(includeCredentials
-      ? { credentials: 'include' }
-      : {}),
+    ...(includeCredentials ? { credentials: 'include' } : {}),
     headers: {
       Accept: 'application/json',
-      ...(options.body
-        ? {
-            'Content-Type':
-              'application/json',
-          }
-        : {}),
-      ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(shouldSendCsrf ? getCsrfHeaders() : {}),
       ...(options.headers || {}),
     },
   });
 
-  const data = await parseResponse(response);
+  let response = await fetch(url, buildOptions());
+  let data = await parseResponse(response);
+
+  if (
+    shouldSendCsrf &&
+    response.status === 403 &&
+    data?.code === 'CSRF_INVALID'
+  ) {
+    clearCsrfToken();
+    await ensureCsrfToken(ADMIN_API_URL, { force: true });
+    response = await fetch(url, buildOptions());
+    data = await parseResponse(response);
+  }
 
   if (!response.ok) {
     const error = new Error(
@@ -68,6 +65,7 @@ async function request(
     );
 
     error.status = response.status;
+    error.code = data?.code;
     throw error;
   }
 
@@ -114,70 +112,6 @@ export const adminApi = {
   permissions: () =>
     request(
       `${ADMIN_API_URL}/system/permissions`,
-      {},
-      true
-    ),
-
-  catalog: (params = {}) =>
-    request(
-      `${ADMIN_API_URL}/catalog${buildQuery(params)}`,
-      {},
-      true
-    ),
-
-  createCatalogProduct: (payload) =>
-    request(
-      `${ADMIN_API_URL}/catalog`,
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      },
-      true
-    ),
-
-  bulkImportCatalog: (rows, reason) =>
-    request(
-      `${ADMIN_API_URL}/catalog/bulk-import`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ rows, reason }),
-      },
-      true
-    ),
-
-  updateCatalogProduct: (productId, payload) =>
-    request(
-      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}`,
-      {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      },
-      true
-    ),
-
-  adjustCatalogStock: (productId, delta, reason) =>
-    request(
-      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/stock-adjust`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ delta, reason }),
-      },
-      true
-    ),
-
-  setCatalogAvailability: (productId, available, reason) =>
-    request(
-      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/availability`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ available, reason }),
-      },
-      true
-    ),
-
-  catalogInventoryHistory: (productId) =>
-    request(
-      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/inventory-history`,
       {},
       true
     ),
@@ -430,7 +364,8 @@ export const adminApi = {
       {
         method: 'POST',
         body: JSON.stringify(payload),
-      }
+      },
+      true
     ),
 
   invoices: (params = {}) =>

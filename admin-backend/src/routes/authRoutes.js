@@ -22,6 +22,7 @@ const router = express.Router();
 router.get('/csrf', (req, res) => {
   return res.status(200).json({
     message: 'CSRF token issued.',
+    csrfToken: req.csrfToken?.() || '',
   });
 });
 

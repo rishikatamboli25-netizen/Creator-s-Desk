@@ -2,16 +2,12 @@ import crypto from 'node:crypto';
 
 const CSRF_COOKIE = 'cd_admin_csrf';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const EXEMPT_PATHS = new Set([
-  '/auth/login',
-  '/auth/invitations',
-]);
 
 const issueToken = (res, secure, sameSite) => {
   const token = crypto.randomBytes(32).toString('hex');
 
   res.cookie(CSRF_COOKIE, token, {
-    httpOnly: false,
+    httpOnly: true,
     secure,
     sameSite,
     path: '/',
@@ -31,10 +27,9 @@ export const csrfMiddleware = ({
     cookieToken = issueToken(res, secure, sameSite);
   }
 
-  if (
-    SAFE_METHODS.has(req.method) ||
-    [...EXEMPT_PATHS].some((path) => req.path.startsWith(path))
-  ) {
+  req.csrfToken = () => cookieToken;
+
+  if (SAFE_METHODS.has(req.method)) {
     return next();
   }
 

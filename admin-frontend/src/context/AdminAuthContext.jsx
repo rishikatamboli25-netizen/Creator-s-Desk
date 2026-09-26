@@ -1,29 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ensureCsrfToken, getCsrfHeaders } from '../lib/csrf.js';
 
 const AdminAuthContext = createContext(null);
 const API_BASE = import.meta.env.VITE_ADMIN_API_URL || 'http://localhost:5000/api/admin';
 
-const readCookie = (name) => {
-  const match = document.cookie
-    .split('; ')
-    .find((row) => row.startsWith(`${name}=`));
-  return match ? decodeURIComponent(match.slice(name.length + 1)) : '';
-};
-
-const csrfHeader = () => {
-  const token = readCookie('cd_admin_csrf');
-  return token ? { 'X-CSRF-Token': token } : {};
-};
-
-const ensureCsrf = async () => {
-  if (readCookie('cd_admin_csrf')) return;
-
-  await fetch(`${API_BASE}/csrf`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: { Accept: 'application/json' },
-  });
-};
+const csrfHeaders = () => getCsrfHeaders();
 
 export const useAdminAuth = () => {
   const context = useContext(AdminAuthContext);
@@ -75,7 +56,7 @@ export function AdminAuthProvider({ children }) {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...csrfHeader(),
+        ...csrfHeaders(),
       },
       body: JSON.stringify({ email, password, ...(otp ? { otp } : {}) }),
     });
@@ -106,7 +87,7 @@ export function AdminAuthProvider({ children }) {
         credentials: 'include',
         headers: {
           Accept: 'application/json',
-          ...csrfHeader(),
+          ...csrfHeaders(),
         },
       });
     } finally {
