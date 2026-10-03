@@ -406,7 +406,7 @@ export default function CatalogPage() {
                           type="button"
                           onClick={() => { setSelected(product); setActionMessage(''); setActionError(''); }}
                           title={product.name || ''}
-                          className="block max-w-full overflow-hidden text-left text-sm font-semibold leading-5 text-creator-black hover:underline [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                          className=" max-w-full overflow-hidden text-left text-sm font-semibold leading-5 text-creator-black hover:underline [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
                         >
                           {product.name}
                         </button>
