@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, CreditCard, Loader2, Search, ShieldCheck, Wa
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import { ConnectedState, ErrorState, LoadingState } from '../components/ModuleState.jsx';
 import { adminApi } from '../lib/api.js';
+import ActionGuard from '../components/ActionGuard.jsx';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 const REASON_OPTIONS = [
   ['CUSTOMER_REQUESTED', 'Customer requested refund'],
@@ -82,6 +84,7 @@ export default function PaymentsPage() {
   const [reasonCode, setReasonCode] = useState('CUSTOMER_REQUESTED');
   const [reasonNote, setReasonNote] = useState('');
   const [refundSubmitting, setRefundSubmitting] = useState(false);
+  const [guard, setGuard] = useState(null);
 
   const loadPayments = async () => {
     setLoading(true);
@@ -92,7 +95,7 @@ export default function PaymentsPage() {
       const p = data.pagination || {};
       setPagination({ page: p.page || pagination.page, limit: p.limit || pagination.limit, total: p.total || 0, totalPages: p.pages || p.totalPages || 1 });
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/payments' }));
     } finally {
       setLoading(false);
     }
@@ -117,19 +120,25 @@ export default function PaymentsPage() {
     setSelectedOrder(order);
     setRefunds([]);
     setRefundError('');
-    setRefundAmount(order.totalAmount ? Number(order.totalAmount).toFixed(2) : '');
+    setRefundAmount('');
     setReasonCode('CUSTOMER_REQUESTED');
     setReasonNote('');
     setRefundsLoading(true);
     try {
       const next = await refreshRefunds(order._id);
       const active = activeRefundForOrder(next);
+      const refundedOrReserved = totalRefundedOrReserved(next);
+      const remaining = Math.max(
+        0,
+        Math.round((Number(order.totalAmount || 0) - refundedOrReserved) * 100) / 100
+      );
+      setRefundAmount(remaining > 0 ? remaining.toFixed(2) : '');
       if (active) {
         const rail = active.refundMethod === 'COD_PAYOUT' ? 'payout' : 'gateway refund';
         setRefundError(`A refund is currently ${statusLabel(active.status, active.refundMethod).toLowerCase()}. A second refund is blocked until the current ${rail} reaches a final state.`);
       }
     } catch (err) {
-      setRefundError(err.message);
+      setRefundError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/payments/refunds' }));
     } finally {
       setRefundsLoading(false);
     }
@@ -152,7 +161,7 @@ export default function PaymentsPage() {
     [selectedOrder, refundedOrReservedAmount]
   );
 
-  const submitRefund = async () => {
+  const submitRefund = () => {
     if (!selectedOrder || refundSubmitting) return;
     const cleanAmount = sanitizeAmount(refundAmount);
     const amount = Number(cleanAmount);
@@ -166,13 +175,34 @@ export default function PaymentsPage() {
       return setRefundError(`A refund is already ${statusLabel(activeRefund.status, activeRefund.refundMethod).toLowerCase()}. Wait for the current ${rail} to reach a final state before requesting another refund.`);
     }
 
+    const refundMethod = selectedOrder.paymentMethod === 'ONLINE' ? 'ORIGINAL_PAYMENT' : 'COD_PAYOUT';
+    setRefundError('');
+    setGuard({
+      variant: 'slide',
+      title: refundMethod === 'COD_PAYOUT' ? 'Create this COD refund?' : 'Issue this refund?',
+      description: refundMethod === 'COD_PAYOUT'
+        ? 'This will create a customer payout request and block a second refund while it is active.'
+        : 'This will submit a refund request against the original payment. Check refund history if the gateway response is delayed.',
+      details: `${formatCurrency(amount)} · ${reasonCode.replaceAll('_', ' ').toLowerCase()} · Order ${selectedOrder._id}`,
+      actionLabel: refundMethod === 'COD_PAYOUT' ? 'Create COD refund' : 'Issue refund',
+      execute: () => executeRefund({ amount, refundMethod }),
+    });
+  };
+
+  const executeRefund = async ({ amount, refundMethod }) => {
     setRefundSubmitting(true);
     setRefundError('');
     const idempotencyKey = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     try {
-      const refundMethod = selectedOrder.paymentMethod === 'ONLINE' ? 'ORIGINAL_PAYMENT' : 'COD_PAYOUT';
-      const result = await adminApi.createRefund({ orderId: selectedOrder._id, amount, reasonCode, reasonNote: reasonNote.trim(), refundMethod, idempotencyKey });
+      const result = await adminApi.createRefund({
+        orderId: selectedOrder._id,
+        amount,
+        reasonCode,
+        reasonNote: reasonNote.trim(),
+        refundMethod,
+        idempotencyKey,
+      });
       const updated = await refreshRefunds(selectedOrder._id);
       const latest = result?.refund || updated[0];
       setRefundAmount('');
@@ -188,64 +218,99 @@ export default function PaymentsPage() {
       else if (latest?.status === 'FAILED') setRefundError(latest.failureReason || 'Razorpay returned a failed response.');
       else if (latest?.status === 'PROCESSING' || latest?.status === 'PENDING') setRefundError('Razorpay has not returned a final response yet. The refund remains processing and a second request is blocked.');
       await loadPayments();
+      setGuard(null);
+      return true;
     } catch (err) {
-      setRefundError(err.data?.refund?.failureReason || err.message);
+      setRefundError(err.data?.refund?.failureReason || toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/payments/refunds' }));
       try { await refreshRefunds(selectedOrder._id); } catch { /* preserve original error */ }
+      return false;
     } finally {
       setRefundSubmitting(false);
     }
   };
 
-  const reconcileRefund = async (refundId) => {
-    setRefundSubmitting(true);
+  const reconcileRefund = (refundId) => {
     setRefundError('');
-    try {
-      const result = await adminApi.reconcileRefund(refundId);
-      await refreshRefunds(selectedOrder._id);
-      setRefundError(result.message || 'Gateway state reconciled.');
-    } catch (err) {
-      setRefundError(err.message);
-    } finally {
-      setRefundSubmitting(false);
-    }
+    setGuard({
+      variant: 'confirm',
+      title: 'Reconcile this Razorpay refund?',
+      description: 'This asks the system to re-check the gateway state of the selected refund.',
+      details: 'Use this when a refund is still processing or pending.',
+      actionLabel: 'Reconcile refund',
+      execute: async () => {
+        setRefundSubmitting(true);
+        try {
+          const result = await adminApi.reconcileRefund(refundId);
+          await refreshRefunds(selectedOrder._id);
+          setRefundError(result.message || 'Gateway state reconciled.');
+          setGuard(null);
+          return true;
+        } catch (err) {
+          setRefundError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/payments/refunds' }));
+          return false;
+        } finally {
+          setRefundSubmitting(false);
+        }
+      },
+    });
   };
 
-  const processCodPayout = async (refundId) => {
-    setRefundSubmitting(true);
+  const processCodPayout = (refundId) => {
     setRefundError('');
-    try {
-      const result = await adminApi.processCodPayout(refundId);
-      await refreshRefunds(selectedOrder._id);
-      setRefundError(
-        result.message ||
-          (result?.refund?.status === 'PROCESSED'
-            ? 'The COD payout was processed.'
-            : 'COD payout request sent. Awaiting the final payout response.')
-      );
-    } catch (err) {
-      setRefundError(err.data?.refund?.failureReason || err.message);
-      try {
-        await refreshRefunds(selectedOrder._id);
-      } catch {
-        /* preserve original error */
-      }
-    } finally {
-      setRefundSubmitting(false);
-    }
+    setGuard({
+      variant: 'slide',
+      title: 'Process this COD payout?',
+      description: 'This will submit the saved customer payout details to the payout flow. Verify the refund record before continuing.',
+      details: 'A successful payout request may move the refund into processing and cannot be undone from this screen.',
+      actionLabel: 'Process COD payout',
+      execute: async () => {
+        setRefundSubmitting(true);
+        try {
+          const result = await adminApi.processCodPayout(refundId);
+          await refreshRefunds(selectedOrder._id);
+          setRefundError(
+            result.message ||
+              (result?.refund?.status === 'PROCESSED'
+                ? 'The COD payout was processed.'
+                : 'COD payout request sent. Awaiting the final payout response.')
+          );
+          setGuard(null);
+          return true;
+        } catch (err) {
+          setRefundError(err.data?.refund?.failureReason || toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/payments/refunds' }));
+          try { await refreshRefunds(selectedOrder._id); } catch { /* preserve original error */ }
+          return false;
+        } finally {
+          setRefundSubmitting(false);
+        }
+      },
+    });
   };
 
-  const reconcileCodPayout = async (refundId) => {
-    setRefundSubmitting(true);
+  const reconcileCodPayout = (refundId) => {
     setRefundError('');
-    try {
-      const result = await adminApi.reconcileCodPayout(refundId);
-      await refreshRefunds(selectedOrder._id);
-      setRefundError(result.message || 'COD payout state reconciled.');
-    } catch (err) {
-      setRefundError(err.message);
-    } finally {
-      setRefundSubmitting(false);
-    }
+    setGuard({
+      variant: 'confirm',
+      title: 'Reconcile this COD payout?',
+      description: 'This asks the payout service to re-check the current state of the selected COD refund.',
+      details: 'No new payout is created by this operation.',
+      actionLabel: 'Reconcile payout',
+      execute: async () => {
+        setRefundSubmitting(true);
+        try {
+          const result = await adminApi.reconcileCodPayout(refundId);
+          await refreshRefunds(selectedOrder._id);
+          setRefundError(result.message || 'COD payout state reconciled.');
+          setGuard(null);
+          return true;
+        } catch (err) {
+          setRefundError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/payments/refunds' }));
+          return false;
+        } finally {
+          setRefundSubmitting(false);
+        }
+      },
+    });
   };
 
   const rangeLabel = useMemo(() => {
@@ -305,20 +370,51 @@ export default function PaymentsPage() {
         <div className="space-y-6 p-6">
           <div className="grid gap-4 sm:grid-cols-2">{[['Payment method', selectedOrder.paymentMethod], ['Payment ID', selectedOrder.paymentId], ['Order total', formatCurrency(selectedOrder.totalAmount)], ['Customer', selectedOrder.customerName], ['Invoice', selectedOrder.document?.invoiceNumber], ['Order date', formatDate(selectedOrder.createdAt)]].map(([label, value]) => <div key={label} className="border border-creator-border bg-creator-surface p-4"><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">{label}</div><div className="mt-2 break-words text-sm text-creator-black">{displayValue(value)}</div></div>)}</div>
 
-          <div className="border-t border-creator-border pt-5"><div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Refund history</div>{refundsLoading ? <div className="flex items-center gap-2 text-sm text-creator-muted"><Loader2 size={16} className="animate-spin" />Loading refund history…</div> : refunds.length ? <div className="space-y-2">{refunds.map((refund) => <div key={refund._id} className="border border-creator-border p-4"><div className="flex items-start justify-between gap-4"><div><div className="text-sm font-medium text-creator-black">{formatCurrency(refund.amount)}</div><div className="mt-1 text-xs text-creator-muted">{refund.refundMethod === 'ORIGINAL_PAYMENT' ? 'Original payment' : refund.refundMethod === 'COD_PAYOUT' ? 'COD payout' : 'Wallet credit'}</div></div><div className={`text-right text-[10px] font-semibold uppercase tracking-[0.14em] ${statusClass(refund.status)}`}>{statusLabel(refund.status)}</div></div><div className="mt-3 text-xs text-creator-muted">{REASON_LABELS[refund.reasonCode] || displayValue(refund.reasonCode)}</div>{refund.reasonNote && <div className="mt-1 text-xs text-creator-muted">{refund.reasonNote}</div>}{refund.gatewayRefundId && <div className="mt-3 break-all text-[11px] text-creator-faint">Razorpay refund: {refund.gatewayRefundId}</div>}{refund.gatewayReference && <div className="mt-1 break-all text-[11px] text-creator-faint">Gateway reference: {refund.gatewayReference}</div>}{refund.failureReason && <div className="mt-2 text-xs text-red-700">{refund.failureReason}</div>}<div className="mt-2 text-[11px] text-creator-faint">{formatDate(refund.createdAt)}</div>{refund.status === 'PAYOUT_DETAILS_SUBMITTED' && refund.refundMethod === 'COD_PAYOUT' && <button type="button" disabled={refundSubmitting} onClick={() => processCodPayout(refund._id)} className="mt-3 border border-creator-border px-3 py-2 text-xs font-medium hover:bg-creator-surface disabled:opacity-50">Process COD payout</button>}
-{(refund.status === 'PROCESSING' || refund.status === 'PENDING') && refund.refundMethod === 'COD_PAYOUT' && <button type="button" disabled={refundSubmitting} onClick={() => reconcileCodPayout(refund._id)} className="mt-3 border border-creator-border px-3 py-2 text-xs font-medium hover:bg-creator-surface disabled:opacity-50">Reconcile COD payout</button>}
-{(refund.status === 'PROCESSING' || refund.status === 'PENDING') && refund.refundMethod === 'ORIGINAL_PAYMENT' && <button type="button" disabled={refundSubmitting} onClick={() => reconcileRefund(refund._id)} className="mt-3 border border-creator-border px-3 py-2 text-xs font-medium hover:bg-creator-surface disabled:opacity-50">Reconcile with Razorpay</button>}</div>)}</div> : <div className="text-sm text-creator-muted">No refund requests recorded for this order.</div>}</div>
+          <div className="border-t border-creator-border pt-5">
+            <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Refund history</div>
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <div className="border border-creator-border bg-creator-surface p-4">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">Order total</div>
+                <div className="mt-2 text-sm font-semibold text-creator-black">{formatCurrency(selectedOrder.totalAmount)}</div>
+              </div>
+              <div className="border border-creator-border bg-creator-surface p-4">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">Refunded / reserved</div>
+                <div className="mt-2 text-sm font-semibold text-creator-black">{formatCurrency(refundedOrReservedAmount)}</div>
+              </div>
+              <div className={`border p-4 ${remainingRefundableAmount > 0 ? 'border-creator-border bg-creator-surface' : 'border-amber-200 bg-amber-50'}`}>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-creator-faint">Remaining refundable</div>
+                <div className="mt-2 text-sm font-semibold text-creator-black">{formatCurrency(remainingRefundableAmount)}</div>
+              </div>
+            </div>
+            {refundsLoading ? <div className="flex items-center gap-2 text-sm text-creator-muted"><Loader2 size={16} className="animate-spin" />Loading refund history…</div> : refunds.length ? <div className="space-y-2">{refunds.map((refund) => <div key={refund._id} className="border border-creator-border p-4"><div className="flex items-start justify-between gap-4"><div><div className="text-sm font-medium text-creator-black">{formatCurrency(refund.amount)}</div><div className="mt-1 text-xs text-creator-muted">{refund.refundMethod === 'ORIGINAL_PAYMENT' ? 'Original payment' : refund.refundMethod === 'COD_PAYOUT' ? 'COD payout' : 'Wallet credit'}</div></div><div className={`text-right text-[10px] font-semibold uppercase tracking-[0.14em] ${statusClass(refund.status)}`}>{statusLabel(refund.status)}</div></div><div className="mt-3 text-xs text-creator-muted">{REASON_LABELS[refund.reasonCode] || displayValue(refund.reasonCode)}</div>{refund.reasonNote && <div className="mt-1 text-xs text-creator-muted">{refund.reasonNote}</div>}{refund.gatewayRefundId && <div className="mt-3 break-all text-[11px] text-creator-faint">Razorpay refund: {refund.gatewayRefundId}</div>}{refund.gatewayReference && <div className="mt-1 break-all text-[11px] text-creator-faint">Gateway reference: {refund.gatewayReference}</div>}{refund.failureReason && <div className="mt-2 text-xs text-red-700">{refund.failureReason}</div>}<div className="mt-2 text-[11px] text-creator-faint">{formatDate(refund.createdAt)}</div>{refund.status === 'PAYOUT_DETAILS_SUBMITTED' && refund.refundMethod === 'COD_PAYOUT' && <button type="button" disabled={refundSubmitting} onClick={() => processCodPayout(refund._id)} className="mt-3 border border-creator-border px-3 py-2 text-xs font-medium hover:bg-creator-surface disabled:opacity-50">Process COD payout</button>}{(refund.status === 'PROCESSING' || refund.status === 'PENDING') && refund.refundMethod === 'COD_PAYOUT' && <button type="button" disabled={refundSubmitting} onClick={() => reconcileCodPayout(refund._id)} className="mt-3 border border-creator-border px-3 py-2 text-xs font-medium hover:bg-creator-surface disabled:opacity-50">Reconcile COD payout</button>}{(refund.status === 'PROCESSING' || refund.status === 'PENDING') && refund.refundMethod === 'ORIGINAL_PAYMENT' && <button type="button" disabled={refundSubmitting} onClick={() => reconcileRefund(refund._id)} className="mt-3 border border-creator-border px-3 py-2 text-xs font-medium hover:bg-creator-surface disabled:opacity-50">Reconcile with Razorpay</button>}</div>)}</div> : <div className="text-sm text-creator-muted">No refund requests recorded for this order.</div>}
+          </div>
 
           <div className="border-t border-creator-border pt-5"><div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Create refund request</div>{activeRefund ? <div className="border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">A refund is currently <strong>{statusLabel(activeRefund.status, activeRefund.refundMethod).toLowerCase()}</strong>. A new request is blocked until the current {activeRefund.refundMethod === 'COD_PAYOUT' ? 'COD payout' : 'Razorpay refund'} reaches a final processed, failed, or cancelled state.</div> : <div className="space-y-4">
-            <div><label htmlFor="refund-amount" className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Refund amount</label><input id="refund-amount" type="text" inputMode="decimal" autoComplete="off" value={refundAmount} onChange={(event) => setRefundAmount(sanitizeAmount(event.target.value))} placeholder="0.00" className="w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" /><div className="mt-1 text-[11px] text-creator-faint">Remaining refundable: {formatCurrency(remainingRefundableAmount)}</div></div>
-            <div><label htmlFor="refund-reason" className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Refund reason</label><select id="refund-reason" value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} className="w-full appearance-none border border-creator-border bg-creator-white px-3 py-3 text-sm outline-none focus:border-creator-black">{REASON_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-            <div><div className="mb-2 flex items-center justify-between"><label htmlFor="refund-note" className="text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Additional note <span className="font-normal normal-case tracking-normal text-creator-faint">(optional)</span></label><span className="text-[11px] text-creator-faint">{reasonNote.length}/{MAX_REASON_NOTE_LENGTH}</span></div><textarea id="refund-note" rows={3} maxLength={MAX_REASON_NOTE_LENGTH} value={reasonNote} onChange={(event) => setReasonNote(event.target.value.slice(0, MAX_REASON_NOTE_LENGTH))} placeholder="Add useful context (optional)." className="w-full resize-none border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" /></div>
+            {remainingRefundableAmount <= 0 && <div className="border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">This payment has no remaining refundable amount. Review the refund history above for previously processed or reserved refunds.</div>}
+            <div><label htmlFor="refund-amount" className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Refund amount</label><input id="refund-amount" type="text" inputMode="decimal" autoComplete="off" value={refundAmount} onChange={(event) => setRefundAmount(sanitizeAmount(event.target.value))} placeholder="0.00" disabled={remainingRefundableAmount <= 0} className="w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black disabled:cursor-not-allowed disabled:bg-creator-surface disabled:text-creator-muted" /><div className="mt-1 text-[11px] text-creator-faint">Remaining refundable: {formatCurrency(remainingRefundableAmount)}</div></div>
+            <div><label htmlFor="refund-reason" className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Refund reason</label><select id="refund-reason" value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} disabled={remainingRefundableAmount <= 0} className="w-full appearance-none border border-creator-border bg-creator-white px-3 py-3 text-sm outline-none focus:border-creator-black disabled:cursor-not-allowed disabled:bg-creator-surface disabled:text-creator-muted">{REASON_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+            <div><div className="mb-2 flex items-center justify-between"><label htmlFor="refund-note" className="text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Additional note <span className="font-normal normal-case tracking-normal text-creator-faint">(optional)</span></label><span className="text-[11px] text-creator-faint">{reasonNote.length}/{MAX_REASON_NOTE_LENGTH}</span></div><textarea id="refund-note" rows={3} maxLength={MAX_REASON_NOTE_LENGTH} disabled={remainingRefundableAmount <= 0} value={reasonNote} onChange={(event) => setReasonNote(event.target.value.slice(0, MAX_REASON_NOTE_LENGTH))} placeholder="Add useful context (optional)." className="w-full resize-none border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black disabled:cursor-not-allowed disabled:bg-creator-surface disabled:text-creator-muted" /></div>
             <div className="border border-creator-border bg-creator-surface p-4 text-xs leading-5 text-creator-muted">{selectedOrder.paymentMethod === 'ONLINE' ? 'This refunds the original Razorpay payment. Bank details are not required. The refund is marked processed only after Razorpay returns a processed response.' : 'COD refunds automatically reuse the customer’s saved payout profile. If no usable payout profile exists, the refund will wait for the customer to add one. The customer does not need to enter payout details for every refund.'}</div>
             {refundError && <div className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">{refundError}</div>}
-            <button type="button" disabled={refundSubmitting} onClick={submitRefund} className="flex w-full items-center justify-center gap-2 bg-creator-black px-4 py-3 text-sm font-medium text-white disabled:opacity-50">{refundSubmitting && <Loader2 size={16} className="animate-spin" />}{selectedOrder.paymentMethod === 'ONLINE' ? 'Issue refund' : 'Create COD refund'}</button>
+            <button type="button" disabled={refundSubmitting || remainingRefundableAmount <= 0} onClick={submitRefund} className="flex w-full items-center justify-center gap-2 bg-creator-black px-4 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40">{refundSubmitting && <Loader2 size={16} className="animate-spin" />}{remainingRefundableAmount <= 0 ? 'No refundable balance' : selectedOrder.paymentMethod === 'ONLINE' ? 'Issue refund' : 'Create COD refund'}</button>
           </div>}</div>
         </div>
       </aside></div>}
+
+      {guard && (
+        <ActionGuard
+          open
+          variant={guard.variant}
+          title={guard.title}
+          description={guard.description}
+          details={guard.details}
+          actionLabel={guard.actionLabel}
+          processing={refundSubmitting}
+          error={refundError}
+          onConfirm={() => guard.execute?.()}
+          onCancel={() => !refundSubmitting && setGuard(null)}
+        />
+      )}
     </div>
   );
 }

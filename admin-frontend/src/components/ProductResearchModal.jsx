@@ -11,6 +11,8 @@ import {
   X,
 } from 'lucide-react';
 import { adminApi } from '../lib/api.js';
+import ActionGuard from './ActionGuard.jsx';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 const money = (value) =>
   Number.isFinite(Number(value))
@@ -65,12 +67,12 @@ export default function ProductResearchModal({ open, onClose, onImported }) {
   const [form, setForm] = useState(defaultForm);
   const [products, setProducts] = useState([]);
   const [preparedRows, setPreparedRows] = useState([]);
-  const [prepareFailures, setPrepareFailures] = useState([]);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [reason, setReason] = useState('Add products researched and approved through CD_ADMIN.');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [importGuardOpen, setImportGuardOpen] = useState(false);
 
   const selectedProducts = useMemo(
     () => products.filter((product) => selectedIds.has(product.id)),
@@ -86,7 +88,6 @@ export default function ProductResearchModal({ open, onClose, onImported }) {
     setForm(defaultForm);
     setProducts([]);
     setPreparedRows([]);
-    setPrepareFailures([]);
     setSelectedIds(new Set());
     setReason('Add products researched and approved through CD_ADMIN.');
     setLoading(false);
@@ -144,11 +145,10 @@ export default function ProductResearchModal({ open, onClose, onImported }) {
       setProducts(researched);
       setSelectedIds(new Set(researched.map((product) => product.id)));
       setPreparedRows([]);
-    setPrepareFailures([]);
       setStep('review');
       setNotice(`${researched.length} product candidates found using ${data.aiProvider || 'AI'}${data.model ? ` (${data.model})` : ''}.`);
     } catch (err) {
-      setError(err.message || 'Unable to research products.');
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog/research', fallback: 'Product research is temporarily unavailable. Please try again in a moment.' }));
     } finally {
       setLoading(false);
     }
@@ -179,23 +179,17 @@ export default function ProductResearchModal({ open, onClose, onImported }) {
         }))
       );
       const rows = Array.isArray(data.rows) ? data.rows : [];
-      const failures = Array.isArray(data.failed) ? data.failed : [];
       setPreparedRows(rows);
-      setPrepareFailures(failures);
       setStep('prepared');
-      setNotice(
-        failures.length
-          ? `${rows.length} products are ready with Cloudinary image URLs. ${failures.length} product${failures.length === 1 ? '' : 's'} could not be prepared and need another image candidate.`
-          : `${rows.length} approved products are ready with Cloudinary image URLs.`
-      );
+      setNotice(`${rows.length} approved products are ready with Cloudinary image URLs.`);
     } catch (err) {
-      setError(err.message || 'Unable to prepare product images.');
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog/research/prepare', fallback: 'We couldn’t prepare one or more product images right now. Try again or choose another image source.' }));
     } finally {
       setLoading(false);
     }
   };
 
-  const importPrepared = async () => {
+  const importPrepared = () => {
     if (!preparedRows.length) {
       setError('Prepare at least one product before importing.');
       return;
@@ -204,16 +198,24 @@ export default function ProductResearchModal({ open, onClose, onImported }) {
       setError('Enter a reason for this catalog import.');
       return;
     }
+    setError('');
+    setImportGuardOpen(true);
+  };
+
+  const executeImportPrepared = async () => {
     setLoading(true);
     setError('');
     setNotice('');
     try {
       const result = await adminApi.bulkImportCatalog(preparedRows, reason.trim());
       setNotice(`${result.createdCount || 0} catalog products imported successfully.`);
+      setImportGuardOpen(false);
       onImported?.(result);
       setStep('complete');
+      return true;
     } catch (err) {
-      setError(err.message || 'Unable to import researched products.');
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog/bulk-import', fallback: 'We couldn’t import the researched products right now. Please review the prepared rows and try again.' }));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -400,18 +402,6 @@ export default function ProductResearchModal({ open, onClose, onImported }) {
               <div className="border border-creator-border bg-creator-surface px-4 py-4 text-sm text-creator-muted">
                 Images have been transferred to Cloudinary. The rows below are now in the same shape your existing catalog bulk importer accepts.
               </div>
-              {prepareFailures.length ? (
-                <div className="border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-                  <div className="font-semibold">Some images could not be prepared</div>
-                  <div className="mt-2 space-y-1 text-xs leading-5">
-                    {prepareFailures.map((failure) => (
-                      <div key={failure.sku}>
-                        <strong>{failure.name}</strong>: {failure.error}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
               <div className="overflow-x-auto border border-creator-border">
                 <table className="min-w-[1050px] w-full text-left">
                   <thead className="border-b border-creator-border bg-creator-surface text-[10px] uppercase tracking-[0.12em] text-creator-muted"><tr><th className="px-3 py-3">Product</th><th className="px-3 py-3">Category</th><th className="px-3 py-3">Price</th><th className="px-3 py-3">Qty</th><th className="px-3 py-3">Cloudinary image</th></tr></thead>
@@ -452,6 +442,18 @@ export default function ProductResearchModal({ open, onClose, onImported }) {
 
           {error && <div className="mx-5 mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
           {notice && <div className="mx-5 mb-5 border border-creator-border bg-creator-surface px-4 py-3 text-sm text-creator-black">{notice}</div>}
+
+          <ActionGuard
+            open={importGuardOpen}
+            title={`Import ${preparedRows.length} approved products?`}
+            description="This will create the reviewed rows in the live catalog through the audited bulk-import endpoint."
+            details={`Import reason: ${reason.trim()}`}
+            actionLabel="Import approved products"
+            processing={loading}
+            error={error}
+            onConfirm={executeImportPrepared}
+            onCancel={() => !loading && setImportGuardOpen(false)}
+          />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-creator-border bg-creator-white px-5 py-4">

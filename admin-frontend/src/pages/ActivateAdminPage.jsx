@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, LoaderCircle, ShieldCheck } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { adminApi } from '../lib/api.js';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 export default function ActivateAdminPage() {
   const [searchParams] = useSearchParams();
@@ -24,7 +25,7 @@ export default function ActivateAdminPage() {
 
     adminApi.invitation(token)
       .then((data) => setInvitation(data.invitation))
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/auth/invitations' })))
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -46,7 +47,7 @@ export default function ActivateAdminPage() {
       await adminApi.activateInvitation(token, { password, confirmPassword });
       setSuccess(true);
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/auth/invitations' }));
     } finally {
       setSubmitting(false);
     }

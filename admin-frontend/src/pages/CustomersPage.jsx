@@ -7,6 +7,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import { ConnectedState, ErrorState, LoadingState } from '../components/ModuleState.jsx';
 import { adminApi } from '../lib/api.js';
@@ -64,7 +65,7 @@ export default function CustomersPage() {
         );
       })
       .catch((err) => {
-        if (active) setError(err.message);
+        if (active) setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/customers' }));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -94,7 +95,7 @@ export default function CustomersPage() {
       const data = await adminApi.customer(customer._id);
       setSelectedCustomer(data.customer || null);
     } catch (err) {
-      setDetailError(err.message);
+      setDetailError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/customers/:id' }));
     } finally {
       setDetailLoading(false);
     }

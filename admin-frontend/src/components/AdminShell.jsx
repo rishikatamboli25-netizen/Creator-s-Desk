@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext.jsx';
+import ActionGuard from './ActionGuard.jsx';
 
 const navItems = [
   { label: 'Dashboard', to: '/', icon: LayoutDashboard, permission: 'dashboard.read', group: 'Workspace' },
@@ -63,7 +64,20 @@ function Navigation({ onNavigate }) {
 function SidebarContent({ mobile = false, onNavigate }) {
   const { admin, logout } = useAdminAuth();
   const navigate = useNavigate();
-  const handleLogout = async () => { await logout(); navigate('/login', { replace: true }); };
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
+
+  const handleLogout = async () => {
+    if (logoutPending) return;
+    setLogoutPending(true);
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } finally {
+      setLogoutPending(false);
+      setLogoutOpen(false);
+    }
+  };
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-20 items-center border-b border-creator-border px-6">
@@ -73,7 +87,17 @@ function SidebarContent({ mobile = false, onNavigate }) {
       <Navigation onNavigate={onNavigate} />
       <div className="border-t border-creator-border p-4">
         <div className="mb-3 rounded-md bg-creator-surface px-3 py-3"><div className="truncate text-sm font-medium text-creator-black">{admin?.name || 'Admin'}</div><div className="mt-1 truncate text-xs text-creator-muted">{admin?.email}</div><div className="mt-2 inline-flex rounded-full border border-creator-border bg-creator-white px-2 py-1 text-[10px] font-semibold tracking-wide text-creator-black">{admin?.role || 'ADMIN'}</div></div>
-        <button type="button" onClick={handleLogout} className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-creator-muted transition hover:bg-creator-surface hover:text-creator-black"><LogOut size={16} strokeWidth={1.8} />Sign out</button>
+        <button type="button" onClick={() => setLogoutOpen(true)} className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm text-creator-muted transition hover:bg-creator-surface hover:text-creator-black"><LogOut size={16} strokeWidth={1.8} />Sign out</button>
+      <ActionGuard
+        open={logoutOpen}
+        title="Sign out of CD_ADMIN?"
+        description="Your current administrator session will end on this device."
+        details={admin?.email ? `You are signed in as ${admin.email}.` : null}
+        actionLabel="Sign out"
+        processing={logoutPending}
+        onConfirm={handleLogout}
+        onCancel={() => !logoutPending && setLogoutOpen(false)}
+      />
       </div>
     </div>
   );

@@ -17,6 +17,8 @@ import { useAdminAuth } from '../context/AdminAuthContext.jsx';
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import { adminApi } from '../lib/api.js';
 import MfaQrCode from '../components/MfaQrCode.jsx';
+import ActionGuard from '../components/ActionGuard.jsx';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 const SETTING_ORDER = [
   'ADMIN_SESSION_HOURS',
@@ -78,6 +80,7 @@ export default function SettingsPage() {
   const [mfaRecoveryVisible, setMfaRecoveryVisible] = useState(false);
   const [mfaRecoveryPassword, setMfaRecoveryPassword] = useState('');
   const [mfaRecoveryOtp, setMfaRecoveryOtp] = useState('');
+  const [guard, setGuard] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -90,7 +93,7 @@ export default function SettingsPage() {
       setSettings(ordered);
       setDraft(Object.fromEntries(ordered.map((item) => [item.key, String(item.value)])));
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/settings' }));
     } finally {
       setLoading(false);
     }
@@ -131,21 +134,32 @@ export default function SettingsPage() {
     setDraft((current) => ({ ...current, [key]: value.replace(/[^0-9]/g, '') }));
   };
 
-  const save = async (event) => {
+  const save = (event) => {
     event.preventDefault();
     if (!canWrite || !dirty || saving) return;
 
+    const changedSettings = {};
+    settings.forEach((item) => {
+      const nextValue = Number(draft[item.key]);
+      if (nextValue !== Number(item.value)) changedSettings[item.key] = nextValue;
+    });
+
+    setError('');
+    setGuard({
+      variant: 'confirm',
+      title: 'Save administrator policy changes?',
+      description: 'These values affect administrator access and security policy for the console.',
+      details: Object.entries(changedSettings).map(([key, value]) => `${key.replaceAll('_', ' ')}: ${value}`).join(' · '),
+      actionLabel: 'Save settings',
+      execute: () => executeSettingsSave(changedSettings),
+    });
+  };
+
+  const executeSettingsSave = async (changedSettings) => {
     setSaving(true);
     setError('');
     setNotice('');
-
     try {
-      const changedSettings = {};
-      settings.forEach((item) => {
-        const nextValue = Number(draft[item.key]);
-        if (nextValue !== Number(item.value)) changedSettings[item.key] = nextValue;
-      });
-
       const data = await adminApi.updateSettings(changedSettings, reason.trim());
       const ordered = [...(data.settings || [])].sort(
         (a, b) => SETTING_ORDER.indexOf(a.key) - SETTING_ORDER.indexOf(b.key)
@@ -155,8 +169,11 @@ export default function SettingsPage() {
       setReason('');
       setEditingSettings(false);
       setNotice(data.changed?.length ? 'Settings updated and audit entries recorded.' : 'No settings changed.');
+      setGuard(null);
+      return true;
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/settings' }));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -209,7 +226,7 @@ export default function SettingsPage() {
       setNotice('Admin account updated and the change was recorded in Audit Log.');
       await refreshAdmin();
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/settings' }));
     } finally {
       setAccountSaving(false);
     }
@@ -263,7 +280,7 @@ export default function SettingsPage() {
       setNotice(data.message || 'Password changed successfully.');
       setPasswordNotice(data.message || 'Password changed successfully.');
     } catch (err) {
-      setPasswordError(err.message);
+      setPasswordError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/auth/change-password' }));
     } finally {
       setPasswordSaving(false);
     }
@@ -294,7 +311,7 @@ export default function SettingsPage() {
       setMfaOtp('');
       setNotice('MFA setup is ready. Add the account to your authenticator app and verify the code.');
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/settings' }));
     } finally {
       setMfaLoading(false);
     }
@@ -320,18 +337,30 @@ export default function SettingsPage() {
       setNotice('MFA is enabled. Save the recovery codes before leaving this page.');
       await refreshAdmin();
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/settings' }));
     } finally {
       setMfaLoading(false);
     }
   };
 
-  const disableMfa = async () => {
+  const disableMfa = () => {
     if (!mfaCurrentPassword || !mfaOtp || mfaLoading) {
       setError('Enter your current password and MFA code to disable MFA.');
       return;
     }
 
+    setError('');
+    setGuard({
+      variant: 'slide',
+      title: 'Disable MFA for this admin account?',
+      description: 'This reduces the sign-in protection on your account. Your current password and verification code will be used to authorize the change.',
+      details: 'Other active admin sessions will also be revoked by the backend.',
+      actionLabel: 'Disable MFA',
+      execute: executeDisableMfa,
+    });
+  };
+
+  const executeDisableMfa = async () => {
     setMfaLoading(true);
     setError('');
     setNotice('');
@@ -344,17 +373,32 @@ export default function SettingsPage() {
       setMfaOtp('');
       setNotice(data.message || 'MFA disabled.');
       await refreshAdmin();
+      setGuard(null);
+      return true;
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/settings' }));
+      return false;
     } finally {
       setMfaLoading(false);
     }
   };
 
-  const regenerateRecoveryCodes = async (event) => {
+  const regenerateRecoveryCodes = (event) => {
     event.preventDefault();
     if (!mfaRecoveryPassword || !mfaRecoveryOtp || mfaLoading) return;
 
+    setError('');
+    setGuard({
+      variant: 'slide',
+      title: 'Regenerate MFA recovery codes?',
+      description: 'Every existing recovery code will be invalidated and replaced with a new set.',
+      details: 'Save the new codes somewhere secure before leaving this page.',
+      actionLabel: 'Regenerate codes',
+      execute: executeRegenerateRecoveryCodes,
+    });
+  };
+
+  const executeRegenerateRecoveryCodes = async () => {
     setMfaLoading(true);
     setError('');
     setNotice('');
@@ -368,8 +412,11 @@ export default function SettingsPage() {
       setMfaRecoveryCodes(data.recoveryCodes || []);
       setMfaRecoveryVisible(true);
       setNotice('New MFA recovery codes generated. Previous recovery codes are no longer valid.');
+      setGuard(null);
+      return true;
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/settings' }));
+      return false;
     } finally {
       setMfaLoading(false);
     }
@@ -747,6 +794,21 @@ export default function SettingsPage() {
           </div>
         )}
       </section>
+
+      {guard && (
+        <ActionGuard
+          open
+          variant={guard.variant}
+          title={guard.title}
+          description={guard.description}
+          details={guard.details}
+          actionLabel={guard.actionLabel}
+          processing={saving || mfaLoading}
+          error={error}
+          onConfirm={() => guard.execute?.()}
+          onCancel={() => !(saving || mfaLoading) && setGuard(null)}
+        />
+      )}
 
       <section className="mt-4 border border-creator-border bg-creator-white p-6 shadow-panel">
           <div className="flex items-center gap-3"><ShieldCheck size={18} /><h2 className="text-sm font-semibold text-creator-black">Security posture</h2></div>

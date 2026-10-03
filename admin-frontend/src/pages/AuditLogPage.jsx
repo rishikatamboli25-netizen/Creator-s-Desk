@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   X,
 } from 'lucide-react';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import { ConnectedState, ErrorState, LoadingState } from '../components/ModuleState.jsx';
 import { adminApi } from '../lib/api.js';
@@ -56,7 +57,7 @@ export default function AuditLogPage() {
       });
       setData(result);
     } catch (loadError) {
-      setError(loadError.message || 'Unable to load audit records.');
+      setError(toUserFacingMessage(loadError, { status: loadError?.status, code: loadError?.code, url: '/api/admin/audit-logs' }));
     } finally {
       setIsLoading(false);
     }

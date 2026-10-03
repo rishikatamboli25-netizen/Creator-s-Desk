@@ -20,6 +20,8 @@ import { ConnectedState, ErrorState, LoadingState } from '../components/ModuleSt
 import { adminApi } from '../lib/api.js';
 import { useAdminAuth } from '../context/AdminAuthContext.jsx';
 import ProductResearchModal from '../components/ProductResearchModal.jsx';
+import ActionGuard from '../components/ActionGuard.jsx';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 const money = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (value) => {
@@ -150,6 +152,7 @@ export default function CatalogPage() {
   const [bulkName, setBulkName] = useState('');
   const [bulkReason, setBulkReason] = useState('');
   const [bulkError, setBulkError] = useState('');
+  const [guard, setGuard] = useState(null);
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
@@ -160,7 +163,7 @@ export default function CatalogPage() {
       setAvailableCategories(Array.isArray(data.categories) ? data.categories : []);
       setPagination(data.pagination || { page, pages: 1, total: 0, limit: 20 });
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog' }));
     } finally {
       setLoading(false);
     }
@@ -224,7 +227,7 @@ export default function CatalogPage() {
       setActionMessage(`Catalog product “${data.product?.name || form.name}” created successfully.`);
       setAddOpen(false);
       await loadCatalog();
-    } catch (err) { setActionError(err.message); } finally { setSaving(false); }
+    } catch (err) { setActionError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog' })); } finally { setSaving(false); }
   };
 
   const saveEditedProduct = async () => {
@@ -245,15 +248,27 @@ export default function CatalogPage() {
       setProducts(Array.isArray(data.products) ? data.products : []);
       setAvailableCategories(Array.isArray(data.categories) ? data.categories : []);
       setSelected((data.products || []).find((item) => item._id === selected._id) || null);
-    } catch (err) { setActionError(err.message); } finally { setSaving(false); }
+    } catch (err) { setActionError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog' })); } finally { setSaving(false); }
   };
 
-  const applyStockAdjustment = async () => {
+  const applyStockAdjustment = () => {
     const delta = Number(stockDelta);
     if (!Number.isInteger(delta) || delta === 0) {
       setActionError('Enter a non-zero whole-number stock adjustment.');
       return;
     }
+    setActionError('');
+    setGuard({
+      variant: 'confirm',
+      title: 'Apply this stock adjustment?',
+      description: 'This changes the physical stock quantity in the catalog.',
+      details: `${selected?.name || 'Product'} · ${delta > 0 ? '+' : ''}${delta} units · Reason: ${stockReason.trim() || 'Not provided'}`,
+      actionLabel: 'Apply adjustment',
+      execute: () => executeStockAdjustment(delta),
+    });
+  };
+
+  const executeStockAdjustment = async (delta) => {
     setSaving(true); setActionError(''); setActionMessage('');
     try {
       const data = await adminApi.adjustCatalogStock(selected._id, delta, stockReason);
@@ -261,10 +276,31 @@ export default function CatalogPage() {
       setStockOpen(false);
       setSelected(data.product);
       await loadCatalog();
-    } catch (err) { setActionError(err.message); } finally { setSaving(false); }
+      setGuard(null);
+      return true;
+    } catch (err) {
+      setActionError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog' }));
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const setAvailability = async (available) => {
+  const setAvailability = (available) => {
+    setActionError('');
+    setGuard({
+      variant: 'confirm',
+      title: available ? 'Mark product available?' : 'Mark product out of stock?',
+      description: available
+        ? 'This clears the manual out-of-stock override. The product still needs positive quantity to be available.'
+        : 'This manually blocks the product from being available without changing its physical quantity.',
+      details: `${selected?.name || 'Product'} · Reason: ${availabilityReason.trim() || 'Not provided'}`,
+      actionLabel: available ? 'Mark available' : 'Mark out of stock',
+      execute: () => executeAvailabilityChange(available),
+    });
+  };
+
+  const executeAvailabilityChange = async (available) => {
     setSaving(true); setActionError(''); setActionMessage('');
     try {
       const data = await adminApi.setCatalogAvailability(selected._id, available, availabilityReason);
@@ -272,7 +308,14 @@ export default function CatalogPage() {
       setAvailabilityReason('');
       setSelected(data.product);
       await loadCatalog();
-    } catch (err) { setActionError(err.message); } finally { setSaving(false); }
+      setGuard(null);
+      return true;
+    } catch (err) {
+      setActionError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog' }));
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openHistory = async (product) => {
@@ -282,7 +325,7 @@ export default function CatalogPage() {
       const data = await adminApi.catalogInventoryHistory(product._id);
       setHistory({ product: data.product, entries: data.history || [] });
     } catch (err) {
-      setHistory({ product, entries: [], error: err.message });
+      setHistory({ product, entries: [], error: toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog/:id/inventory-history' }) });
     } finally { setHistoryLoading(false); }
   };
 
@@ -306,12 +349,25 @@ export default function CatalogPage() {
       setBulkRows(rows);
     } catch (err) {
       setBulkRows([]);
-      setBulkError(err.message);
+      setBulkError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog' }));
     }
   };
 
-  const runBulkImport = async () => {
+  const runBulkImport = () => {
     if (!bulkRows.length) return setBulkError('Upload a valid CSV file first.');
+    if (!bulkReason.trim()) return setBulkError('Enter a reason for this import.');
+    setBulkError('');
+    setGuard({
+      variant: 'confirm',
+      title: `Import ${bulkRows.length} catalog products?`,
+      description: 'The approved rows will be sent to the catalog bulk-import endpoint and recorded in the audit trail.',
+      details: `File: ${bulkName || 'CSV'} · ${bulkRows.length} rows · Reason: ${bulkReason.trim()}`,
+      actionLabel: 'Import catalog',
+      execute: executeBulkImport,
+    });
+  };
+
+  const executeBulkImport = async () => {
     setSaving(true); setBulkError(''); setActionError(''); setActionMessage('');
     try {
       const result = await adminApi.bulkImportCatalog(bulkRows, bulkReason);
@@ -319,7 +375,14 @@ export default function CatalogPage() {
       setBulkOpen(false);
       setBulkRows([]); setBulkName(''); setBulkReason('');
       await loadCatalog();
-    } catch (err) { setBulkError(err.message); } finally { setSaving(false); }
+      setGuard(null);
+      return true;
+    } catch (err) {
+      setBulkError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/catalog' }));
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const availabilityLabel = (product) => {
@@ -406,7 +469,7 @@ export default function CatalogPage() {
                           type="button"
                           onClick={() => { setSelected(product); setActionMessage(''); setActionError(''); }}
                           title={product.name || ''}
-                          className=" max-w-full overflow-hidden text-left text-sm font-semibold leading-5 text-creator-black hover:underline [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                          className="block max-w-full overflow-hidden text-left text-sm font-semibold leading-5 text-creator-black hover:underline [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
                         >
                           {product.name}
                         </button>
@@ -489,6 +552,21 @@ export default function CatalogPage() {
           await loadCatalog();
         }}
       />
+
+      {guard && (
+        <ActionGuard
+          open
+          variant={guard.variant}
+          title={guard.title}
+          description={guard.description}
+          details={guard.details}
+          actionLabel={guard.actionLabel}
+          processing={saving}
+          error={actionError || bulkError}
+          onConfirm={() => guard.execute?.()}
+          onCancel={() => !saving && setGuard(null)}
+        />
+      )}
     </div>
   );
 }

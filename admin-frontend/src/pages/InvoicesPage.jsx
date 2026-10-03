@@ -7,6 +7,7 @@ import {
   Search,
   X,
 } from 'lucide-react';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import {
   ConnectedState,
@@ -226,7 +227,7 @@ export default function InvoicesPage() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err.message || 'Unable to load invoices.');
+          setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/invoices' }));
         }
       })
       .finally(() => {

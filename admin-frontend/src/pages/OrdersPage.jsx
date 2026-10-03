@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Loader2, Search, X } from 'lucide-react';
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import { adminApi } from '../lib/api.js';
+import ActionGuard from '../components/ActionGuard.jsx';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 const STATUS_OPTIONS = ['All', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
 
@@ -26,6 +28,7 @@ export default function OrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [statusGuard, setStatusGuard] = useState(null);
 
   const loadOrders = async (page = 1) => {
     setLoading(true);
@@ -41,7 +44,7 @@ export default function OrdersPage() {
       setOrders(data.orders || []);
       setPagination(data.pagination || { page, pages: 1, total: 0 });
     } catch (requestError) {
-      setError(requestError.message || 'Unable to load orders.');
+      setError(toUserFacingMessage(requestError, { status: requestError?.status, code: requestError?.code, url: '/api/admin/orders' }));
       setOrders([]);
     } finally {
       setLoading(false);
@@ -62,25 +65,39 @@ export default function OrdersPage() {
       const data = await adminApi.order(orderId);
       setSelectedOrder(data.order);
     } catch (requestError) {
-      setError(requestError.message || 'Unable to load order details.');
+      setError(toUserFacingMessage(requestError, { status: requestError?.status, code: requestError?.code, url: '/api/admin/orders/:id' }));
     } finally {
       setDetailLoading(false);
     }
   };
 
-  const changeStatus = async (nextStatus) => {
+  const changeStatus = (nextStatus) => {
     if (!selectedOrder || updating || selectedOrder.status === nextStatus) return;
+    setError('');
+    setStatusGuard({
+      nextStatus,
+      title: `Change order to ${nextStatus}?`,
+      description: 'This updates the operational status shown to the team and downstream order workflows.',
+      details: `Order ${selectedOrder._id} · Current status: ${selectedOrder.status} · New status: ${nextStatus}`,
+      actionLabel: `Set ${nextStatus}`,
+    });
+  };
+
+  const confirmStatusChange = async () => {
+    if (!selectedOrder || !statusGuard || updating) return;
     setUpdating(true);
+    setError('');
     try {
-      const data = await adminApi.updateOrderStatus(selectedOrder._id, nextStatus);
+      const data = await adminApi.updateOrderStatus(selectedOrder._id, statusGuard.nextStatus);
       setSelectedOrder(data.order);
       setOrders((current) =>
         current.map((order) =>
           order._id === selectedOrder._id ? data.order : order
         )
       );
+      setStatusGuard(null);
     } catch (requestError) {
-      setError(requestError.message || 'Unable to update order status.');
+      setError(toUserFacingMessage(requestError, { status: requestError?.status, code: requestError?.code, url: '/api/admin/orders/:id/status' }));
     } finally {
       setUpdating(false);
     }
@@ -233,6 +250,19 @@ export default function OrdersPage() {
             )}
           </aside>
         </div>
+      )}
+      {statusGuard && (
+        <ActionGuard
+          open
+          title={statusGuard.title}
+          description={statusGuard.description}
+          details={statusGuard.details}
+          actionLabel={statusGuard.actionLabel}
+          processing={updating}
+          error={error}
+          onConfirm={confirmStatusChange}
+          onCancel={() => !updating && setStatusGuard(null)}
+        />
       )}
     </div>
   );

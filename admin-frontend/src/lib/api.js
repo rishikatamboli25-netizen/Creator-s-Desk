@@ -6,7 +6,11 @@ const ADMIN_API_URL =
   import.meta.env.VITE_ADMIN_API_URL ||
   `${GATEWAY_URL}/api/admin`;
 
-import { clearCsrfToken, ensureCsrfToken, getCsrfHeaders } from './csrf.js';
+import {
+  clearCsrfToken,
+  ensureCsrfToken,
+  getCsrfHeaders,
+} from './csrf.js';
 
 async function parseResponse(response) {
   const contentType =
@@ -27,17 +31,25 @@ async function request(
   includeCredentials = false
 ) {
   const method = String(options.method || 'GET').toUpperCase();
-  const shouldSendCsrf = includeCredentials && !['GET', 'HEAD', 'OPTIONS'].includes(method);
+
+  const shouldSendCsrf =
+    includeCredentials &&
+    !['GET', 'HEAD', 'OPTIONS'].includes(method);
+
   if (shouldSendCsrf) {
     await ensureCsrfToken(ADMIN_API_URL);
   }
 
   const buildOptions = () => ({
     ...options,
-    ...(includeCredentials ? { credentials: 'include' } : {}),
+    ...(includeCredentials
+      ? { credentials: 'include' }
+      : {}),
     headers: {
       Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body
+        ? { 'Content-Type': 'application/json' }
+        : {}),
       ...(shouldSendCsrf ? getCsrfHeaders() : {}),
       ...(options.headers || {}),
     },
@@ -52,7 +64,12 @@ async function request(
     data?.code === 'CSRF_INVALID'
   ) {
     clearCsrfToken();
-    await ensureCsrfToken(ADMIN_API_URL, { force: true });
+
+    await ensureCsrfToken(
+      ADMIN_API_URL,
+      { force: true }
+    );
+
     response = await fetch(url, buildOptions());
     data = await parseResponse(response);
   }
@@ -66,6 +83,8 @@ async function request(
 
     error.status = response.status;
     error.code = data?.code;
+    error.data = data;
+
     throw error;
   }
 
@@ -116,7 +135,6 @@ export const adminApi = {
       true
     ),
 
-    
   catalog: (params = {}) =>
     request(
       `${ADMIN_API_URL}/catalog${buildQuery(params)}`,
@@ -156,7 +174,9 @@ export const adminApi = {
 
   updateCatalogProduct: (productId, payload) =>
     request(
-      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}`,
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(
+        productId
+      )}`,
       {
         method: 'PUT',
         body: JSON.stringify(payload),
@@ -164,29 +184,49 @@ export const adminApi = {
       true
     ),
 
-  adjustCatalogStock: (productId, delta, reason) =>
+  adjustCatalogStock: (
+    productId,
+    delta,
+    reason
+  ) =>
     request(
-      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/stock-adjust`,
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(
+        productId
+      )}/stock-adjust`,
       {
         method: 'POST',
-        body: JSON.stringify({ delta, reason }),
+        body: JSON.stringify({
+          delta,
+          reason,
+        }),
       },
       true
     ),
 
-  setCatalogAvailability: (productId, available, reason) =>
+  setCatalogAvailability: (
+    productId,
+    available,
+    reason
+  ) =>
     request(
-      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/availability`,
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(
+        productId
+      )}/availability`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ available, reason }),
+        body: JSON.stringify({
+          available,
+          reason,
+        }),
       },
       true
     ),
 
   catalogInventoryHistory: (productId) =>
     request(
-      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/inventory-history`,
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(
+        productId
+      )}/inventory-history`,
       {},
       true
     ),
@@ -196,7 +236,10 @@ export const adminApi = {
       `${ADMIN_API_URL}/catalog/bulk-import`,
       {
         method: 'POST',
-        body: JSON.stringify({ rows, reason }),
+        body: JSON.stringify({
+          rows,
+          reason,
+        }),
       },
       true
     ),
@@ -227,9 +270,7 @@ export const adminApi = {
 
   orders: (params = {}) =>
     request(
-      `${ADMIN_API_URL}/orders${buildQuery(
-        params
-      )}`,
+      `${ADMIN_API_URL}/orders${buildQuery(params)}`,
       {},
       true
     ),
@@ -253,16 +294,16 @@ export const adminApi = {
       )}/status`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status,
+        }),
       },
       true
     ),
 
   customers: (params = {}) =>
     request(
-      `${ADMIN_API_URL}/customers${buildQuery(
-        params
-      )}`,
+      `${ADMIN_API_URL}/customers${buildQuery(params)}`,
       {},
       true
     ),
@@ -276,10 +317,22 @@ export const adminApi = {
       true
     ),
 
-  refundHistory: (paymentId) =>
+  /*
+   * Canonical refund-history method.
+   *
+   * IMPORTANT:
+   * This method takes an ORDER ID.
+   *
+   * Frontend:
+   * adminApi.refundHistory(orderId)
+   *
+   * API:
+   * GET /api/admin/payments/refunds/:orderId
+   */
+  refundHistory: (orderId) =>
     request(
       `${ADMIN_API_URL}/payments/refunds/${encodeURIComponent(
-        paymentId
+        orderId
       )}`,
       {},
       true
@@ -291,6 +344,39 @@ export const adminApi = {
       {
         method: 'POST',
         body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  processCodPayout: (refundId) =>
+    request(
+      `${ADMIN_API_URL}/payments/refunds/${encodeURIComponent(
+        refundId
+      )}/payout`,
+      {
+        method: 'POST',
+      },
+      true
+    ),
+
+  reconcileCodPayout: (refundId) =>
+    request(
+      `${ADMIN_API_URL}/payments/refunds/${encodeURIComponent(
+        refundId
+      )}/payout/reconcile`,
+      {
+        method: 'POST',
+      },
+      true
+    ),
+
+  reconcileRefund: (refundId) =>
+    request(
+      `${ADMIN_API_URL}/payments/refunds/${encodeURIComponent(
+        refundId
+      )}/reconcile`,
+      {
+        method: 'POST',
       },
       true
     ),
@@ -312,36 +398,50 @@ export const adminApi = {
       true
     ),
 
-  updateAdminUserRole: (adminUserId, roleKey) =>
+  updateAdminUserRole: (
+    adminUserId,
+    roleKey
+  ) =>
     request(
       `${ADMIN_API_URL}/admin-users/${encodeURIComponent(
         adminUserId
       )}/role`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ roleKey }),
+        body: JSON.stringify({
+          roleKey,
+        }),
       },
       true
     ),
 
-  updateAdminUserStatus: (adminUserId, status) =>
+  updateAdminUserStatus: (
+    adminUserId,
+    status
+  ) =>
     request(
       `${ADMIN_API_URL}/admin-users/${encodeURIComponent(
         adminUserId
       )}/status`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status,
+        }),
       },
       true
     ),
 
-  revokeAdminUserSessions: (adminUserId) =>
+  revokeAdminUserSessions: (
+    adminUserId
+  ) =>
     request(
       `${ADMIN_API_URL}/admin-users/${encodeURIComponent(
         adminUserId
       )}/revoke-sessions`,
-      { method: 'POST' },
+      {
+        method: 'POST',
+      },
       true
     ),
 
@@ -384,7 +484,9 @@ export const adminApi = {
       `${ADMIN_API_URL}/auth/mfa/setup`,
       {
         method: 'POST',
-        body: JSON.stringify({ currentPassword }),
+        body: JSON.stringify({
+          currentPassword,
+        }),
       },
       true
     ),
@@ -409,7 +511,9 @@ export const adminApi = {
       true
     ),
 
-  regenerateMfaRecoveryCodes: (payload) =>
+  regenerateMfaRecoveryCodes: (
+    payload
+  ) =>
     request(
       `${ADMIN_API_URL}/auth/mfa/recovery-codes`,
       {
@@ -426,22 +530,33 @@ export const adminApi = {
       true
     ),
 
-  updateSettings: (settings, reason) =>
+  updateSettings: (
+    settings,
+    reason
+  ) =>
     request(
       `${ADMIN_API_URL}/settings`,
       {
         method: 'PATCH',
-        body: JSON.stringify({ settings, reason }),
+        body: JSON.stringify({
+          settings,
+          reason,
+        }),
       },
       true
     ),
 
   invitation: (token) =>
     request(
-      `${ADMIN_API_URL}/auth/invitations/${encodeURIComponent(token)}`
+      `${ADMIN_API_URL}/auth/invitations/${encodeURIComponent(
+        token
+      )}`
     ),
 
-  activateInvitation: (token, payload) =>
+  activateInvitation: (
+    token,
+    payload
+  ) =>
     request(
       `${ADMIN_API_URL}/auth/invitations/${encodeURIComponent(
         token
@@ -455,9 +570,7 @@ export const adminApi = {
 
   invoices: (params = {}) =>
     request(
-      `${ADMIN_API_URL}/invoices${buildQuery(
-        params
-      )}`,
+      `${ADMIN_API_URL}/invoices${buildQuery(params)}`,
       {},
       true
     ),

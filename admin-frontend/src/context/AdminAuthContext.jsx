@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ensureCsrfToken, getCsrfHeaders } from '../lib/csrf.js';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 const AdminAuthContext = createContext(null);
 const API_BASE = import.meta.env.VITE_ADMIN_API_URL || 'http://localhost:5000/api/admin';
@@ -48,35 +49,60 @@ export function AdminAuthProvider({ children }) {
   }, [refreshAdmin]);
 
   const login = useCallback(async (email, password, otp = '') => {
-    await ensureCsrfToken(API_BASE);
-
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        ...csrfHeaders(),
-      },
-      body: JSON.stringify({ email, password, ...(otp ? { otp } : {}) }),
-    });
-
-    let data = {};
     try {
-      data = await response.json();
-    } catch {
-      // Preserve the generic error when the backend is not JSON.
-    }
+      await ensureCsrfToken(API_BASE);
 
-    if (!response.ok) {
-      const error = new Error(data.error || 'Unable to sign in.');
-      error.status = response.status;
-      error.mfaRequired = Boolean(data.mfaRequired);
-      throw error;
-    }
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...csrfHeaders(),
+        },
+        body: JSON.stringify({ email, password, ...(otp ? { otp } : {}) }),
+      });
 
-    setAdmin(data.admin || null);
-    return data.admin || null;
+      let data = {};
+      try {
+        data = await response.json();
+      } catch {
+        // Preserve a safe generic error when the backend is not JSON.
+      }
+
+      if (!response.ok) {
+        const error = new Error(
+          toUserFacingMessage(data?.error || data?.message || 'Unable to sign in.', {
+            status: response.status,
+            code: data?.code,
+            url: `${API_BASE}/auth/login`,
+            fallback: 'We couldn’t sign you in right now. Please try again.',
+          })
+        );
+        error.status = response.status;
+        error.code = data?.code;
+        error.data = data;
+        error.mfaRequired = Boolean(data.mfaRequired);
+        throw error;
+      }
+
+      setAdmin(data.admin || null);
+      return data.admin || null;
+    } catch (error) {
+      if (error?.mfaRequired) throw error;
+      const safeMessage = toUserFacingMessage(error?.technicalMessage || error?.message, {
+        status: error?.status,
+        code: error?.code,
+        url: `${API_BASE}/auth/login`,
+        fallback: 'We couldn’t sign you in right now. Please try again.',
+      });
+      const safeError = new Error(safeMessage);
+      safeError.status = error?.status;
+      safeError.code = error?.code;
+      safeError.data = error?.data;
+      safeError.mfaRequired = Boolean(error?.mfaRequired);
+      throw safeError;
+    }
   }, []);
 
   const logout = useCallback(async () => {

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import { ConnectedState, ErrorState, LoadingState } from '../components/ModuleState.jsx';
 import { gatewayApi } from '../lib/api.js';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -26,7 +27,7 @@ export default function ProductsPage() {
       .then((data) => {
         if (active) setProducts(Array.isArray(data) ? data : []);
       })
-      .catch((err) => active && setError(err.message))
+      .catch((err) => active && setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/products' })))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, []);

@@ -15,6 +15,8 @@ import { useAdminAuth } from '../context/AdminAuthContext.jsx';
 import ModuleHeader from '../components/ModuleHeader.jsx';
 import { ConnectedState, ErrorState, LoadingState } from '../components/ModuleState.jsx';
 import { adminApi } from '../lib/api.js';
+import ActionGuard from '../components/ActionGuard.jsx';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 const formatDate = (value) => {
   if (!value) return 'Never';
@@ -70,7 +72,7 @@ function InviteModal({ roles, initialUser = null, onClose, onCreated }) {
       setCreated({ ...data.invitation, invitationUrl: url });
       onCreated(data.invitation);
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/admin-users' }));
     } finally {
       setSubmitting(false);
     }
@@ -149,6 +151,7 @@ export default function AdminUsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteTarget, setInviteTarget] = useState(null);
   const [busyKey, setBusyKey] = useState('');
+  const [guard, setGuard] = useState(null);
 
   const load = async () => {
     setError('');
@@ -161,7 +164,7 @@ export default function AdminUsersPage() {
       setData({ users: usersData.users || [], invitations: usersData.invitations || [] });
       setRoles(rolesData.roles || []);
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/admin-users' }));
     } finally {
       setLoading(false);
     }
@@ -182,8 +185,10 @@ export default function AdminUsersPage() {
       await fn();
       await load();
       setNotice(successMessage);
+      return true;
     } catch (err) {
-      setError(err.message);
+      setError(toUserFacingMessage(err, { status: err?.status, code: err?.code, url: '/api/admin/admin-users' }));
+      return false;
     } finally {
       setBusyKey('');
     }
@@ -191,22 +196,62 @@ export default function AdminUsersPage() {
 
   const changeRole = (user, nextRoleKey) => {
     if (nextRoleKey === user.roleKey || !canWrite) return;
-    if (!window.confirm(`Change ${user.name}'s role to ${roleName[nextRoleKey] || nextRoleKey}?`)) return;
-    runAction(`role:${user.id}`, () => adminApi.updateAdminUserRole(user.id, nextRoleKey), `Role updated for ${user.name}.`);
+    setError('');
+    setGuard({
+      variant: 'confirm',
+      title: `Change ${user.name}’s role?`,
+      description: `This will change this administrator’s role and therefore their effective permissions.`,
+      details: `Current: ${roleName[user.roleKey] || user.roleKey} · New: ${roleName[nextRoleKey] || nextRoleKey}`,
+      actionLabel: 'Change role',
+      execute: () => runAction(
+        `role:${user.id}`,
+        () => adminApi.updateAdminUserRole(user.id, nextRoleKey),
+        `Role updated for ${user.name}.`
+      ),
+    });
   };
 
   const toggleStatus = (user) => {
     if (!canWrite || user.status === 'INVITED') return;
     const nextStatus = user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-    const action = nextStatus === 'SUSPENDED' ? 'suspend' : 'enable';
-    if (!window.confirm(`${action === 'suspend' ? 'Suspend' : 'Enable'} ${user.name}'s admin account?`)) return;
-    runAction(`status:${user.id}`, () => adminApi.updateAdminUserStatus(user.id, nextStatus), `${user.name} is now ${nextStatus === 'SUSPENDED' ? 'suspended' : 'active'}.`);
+    setError('');
+    setGuard({
+      variant: nextStatus === 'SUSPENDED' ? 'slide' : 'confirm',
+      title: `${nextStatus === 'SUSPENDED' ? 'Suspend' : 'Enable'} ${user.name}’s admin account?`,
+      description: nextStatus === 'SUSPENDED'
+        ? 'Suspension blocks this administrator from using the admin console until their account is enabled again.'
+        : 'This will restore this administrator’s ability to sign in to the admin console.',
+      details: `Current status: ${user.status}.`,
+      actionLabel: nextStatus === 'SUSPENDED' ? 'Suspend account' : 'Enable account',
+      execute: () => runAction(
+        `status:${user.id}`,
+        () => adminApi.updateAdminUserStatus(user.id, nextStatus),
+        `${user.name} is now ${nextStatus === 'SUSPENDED' ? 'suspended' : 'active'}.`
+      ),
+    });
   };
 
   const revokeSessions = (user) => {
     if (!canWrite || !user.activeSessionCount) return;
-    if (!window.confirm(`Revoke all active sessions for ${user.name}?`)) return;
-    runAction(`sessions:${user.id}`, () => adminApi.revokeAdminUserSessions(user.id), `Active sessions revoked for ${user.name}.`);
+    setError('');
+    setGuard({
+      variant: 'slide',
+      title: `Revoke ${user.name}’s active sessions?`,
+      description: 'Every current session for this administrator will be invalidated. They will need to sign in again.',
+      details: `${user.activeSessionCount} active session${user.activeSessionCount === 1 ? '' : 's'} will be revoked.`,
+      actionLabel: 'Revoke sessions',
+      execute: () => runAction(
+        `sessions:${user.id}`,
+        () => adminApi.revokeAdminUserSessions(user.id),
+        `Active sessions revoked for ${user.name}.`
+      ),
+    });
+  };
+
+  const confirmGuard = async () => {
+    if (!guard?.execute || busyKey) return;
+    const succeeded = await guard.execute();
+    if (succeeded) setGuard(null);
   };
 
   const reinvite = (user) => {
@@ -296,6 +341,20 @@ export default function AdminUsersPage() {
 
       <div className="mt-6 flex items-start gap-3 border border-creator-border bg-creator-white p-5 shadow-panel"><Check size={17} className="mt-0.5" /><div><div className="text-sm font-semibold text-creator-black">Access controls</div><p className="mt-1 text-sm leading-6 text-creator-muted">Only administrators with <span className="font-medium text-creator-black">admin_users.write</span> can mutate another admin account. Self-lockout and last-active-SUPER_ADMIN protections are enforced by the backend.</p></div></div>
 
+      {guard && (
+        <ActionGuard
+          open
+          variant={guard.variant}
+          title={guard.title}
+          description={guard.description}
+          details={guard.details}
+          actionLabel={guard.actionLabel}
+          processing={Boolean(busyKey)}
+          error={error}
+          onConfirm={confirmGuard}
+          onCancel={() => !busyKey && setGuard(null)}
+        />
+      )}
       {inviteOpen && <InviteModal roles={roles} initialUser={inviteTarget} onClose={() => { setInviteOpen(false); setInviteTarget(null); load(); }} onCreated={() => {}} />}
     </div>
   );

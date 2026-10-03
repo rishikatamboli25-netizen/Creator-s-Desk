@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertCircle, CheckCircle2, LoaderCircle } from 'lucide-react';
+import { toUserFacingMessage } from '../lib/userFacingError.js';
 
 export function LoadingState({ label = 'Loading module data…' }) {
   return (
@@ -13,12 +14,13 @@ export function LoadingState({ label = 'Loading module data…' }) {
 }
 
 export function ErrorState({ message }) {
+  const safeMessage = toUserFacingMessage(message);
   return (
     <div className="flex min-h-64 items-center justify-center border border-red-200 bg-white shadow-panel">
       <div className="max-w-md px-6 text-center">
         <AlertCircle size={20} className="mx-auto text-red-600" />
         <div className="mt-3 text-sm font-semibold text-creator-black">Unable to load module data</div>
-        <p className="mt-2 text-sm leading-6 text-creator-muted">{message}</p>
+        <p className="mt-2 text-sm leading-6 text-creator-muted">{safeMessage}</p>
       </div>
     </div>
   );
