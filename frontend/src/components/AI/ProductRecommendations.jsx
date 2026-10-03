@@ -2,8 +2,8 @@
 import { useState } from "react";
 import { ShoppingCart, Eye, Check } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useCart } from "../context/CartContext";
-import { useAuth } from "../context/AuthContext";
+import { useCart } from "../../context/CartContext";
+import { useAuth } from "../../context/AuthContext";
 
 export default function ProductRecommendations({ data }) {
   const navigate = useNavigate();
