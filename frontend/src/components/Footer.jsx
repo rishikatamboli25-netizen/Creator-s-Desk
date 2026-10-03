@@ -163,10 +163,10 @@ const Footer = () => {
             &copy; {new Date().getFullYear()} CREATOR'S DESK. All rights reserved.
           </p>
           <div className="flex gap-8 mt-4 md:mt-0">
-            <Link to="/privacy" className="hover:text-creator-black transition-colors">
+            <Link className="hover:text-creator-black transition-colors">
               Privacy Policy
             </Link>
-            <Link to="/terms" className="hover:text-creator-black transition-colors">
+            <Link  className="hover:text-creator-black transition-colors">
               Terms of Service
             </Link>
           </div>
