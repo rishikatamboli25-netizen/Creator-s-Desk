@@ -136,7 +136,7 @@ const CartDrawer = () => {
               <span className="text-sm uppercase tracking-widest text-creator-muted">
                 Subtotal
               </span>
-              <span className="text-xl font-medium">${cartTotal.toFixed(2)}</span>
+              <span className="text-xl font-medium">₹{cartTotal.toFixed(2)}</span>
             </div>
             
             <button
