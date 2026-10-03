@@ -92,18 +92,18 @@ app.use(
   })
 );
 
-app.use('/auth', authRoutes);
-app.use('/system', systemRoutes);
-app.use('/pricing', pricingRoutes);
-app.use('/catalog', catalogRoutes);
-app.use('/orders', orderRoutes);
-app.use('/customers', customerRoutes);
-app.use('/payments', paymentRoutes);
-app.use('/invoices', invoiceRoutes);
-app.use('/admin-users', adminUserRoutes);
-app.use('/auth/invitations', invitationRoutes);
-app.use('/audit-logs', auditRoutes);
-app.use('/settings', settingsRoutes);
+app.use('/api/admin/auth', authRoutes);
+app.use('/api/admin/system', systemRoutes);
+app.use('/api/admin/pricing', pricingRoutes);
+app.use('/api/admin/catalog', catalogRoutes);
+app.use('/api/admin/orders', orderRoutes);
+app.use('/api/admin/customers', customerRoutes);
+app.use('/api/admin/payments', paymentRoutes);
+app.use('/api/admin/invoices', invoiceRoutes);
+app.use('/api/admin/admin-users', adminUserRoutes);
+app.use('/api/admin/auth/invitations', invitationRoutes);
+app.use('/api/admin/audit-logs', auditRoutes);
+app.use('/api/admin/settings', settingsRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(

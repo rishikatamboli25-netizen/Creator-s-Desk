@@ -107,7 +107,7 @@ export default function PaymentsPage() {
   };
 
   const refreshRefunds = async (orderId) => {
-    const data = await adminApi.orderRefundHistory(orderId);
+    const data = await adminApi.refundHistory(orderId);
     const next = data.refunds || [];
     setRefunds(next);
     return next;

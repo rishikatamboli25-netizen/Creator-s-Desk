@@ -10,6 +10,7 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
+  Sparkles,
   Upload,
   X,
   XCircle,
@@ -18,6 +19,7 @@ import ModuleHeader from '../components/ModuleHeader.jsx';
 import { ConnectedState, ErrorState, LoadingState } from '../components/ModuleState.jsx';
 import { adminApi } from '../lib/api.js';
 import { useAdminAuth } from '../context/AdminAuthContext.jsx';
+import ProductResearchModal from '../components/ProductResearchModal.jsx';
 
 const money = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDate = (value) => {
@@ -139,6 +141,7 @@ export default function CatalogPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [stockOpen, setStockOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [researchOpen, setResearchOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [stockDelta, setStockDelta] = useState('');
   const [stockReason, setStockReason] = useState('');
@@ -334,7 +337,7 @@ export default function CatalogPage() {
         eyebrow="Catalog"
         title="Catalog"
         description="Manage products, inventory and availability. Product Service remains the authoritative source for catalog truth."
-        action={<div className="flex flex-wrap items-center gap-2"><ConnectedState label={`${pagination.total || 0} catalog items`} />{canBulk && <button type="button" onClick={() => { setBulkOpen(true); setBulkError(''); }} className="inline-flex items-center gap-2 border border-creator-border bg-creator-white px-3 py-2 text-xs font-semibold text-creator-black hover:bg-creator-surface"><Upload size={14} /> Bulk import</button>}{canWrite && <button type="button" onClick={openAdd} className="inline-flex items-center gap-2 bg-creator-black px-3 py-2 text-xs font-semibold text-creator-white"><Plus size={14} /> Add product</button>}</div>}
+        action={<div className="flex flex-wrap items-center gap-2"><ConnectedState label={`${pagination.total || 0} catalog items`} />{canBulk && <><button type="button" onClick={() => setResearchOpen(true)} className="inline-flex items-center gap-2 border border-creator-border bg-creator-white px-3 py-2 text-xs font-semibold text-creator-black hover:bg-creator-surface"><Sparkles size={14} /> AI research</button><button type="button" onClick={() => { setBulkOpen(true); setBulkError(''); }} className="inline-flex items-center gap-2 border border-creator-border bg-creator-white px-3 py-2 text-xs font-semibold text-creator-black hover:bg-creator-surface"><Upload size={14} /> Bulk import</button></>}{canWrite && <button type="button" onClick={openAdd} className="inline-flex items-center gap-2 bg-creator-black px-3 py-2 text-xs font-semibold text-creator-white"><Plus size={14} /> Add product</button>}</div>}
       />
 
       <div className="mb-5 flex flex-col gap-3 md:flex-row">
@@ -363,23 +366,89 @@ export default function CatalogPage() {
 
       <div className="overflow-hidden border border-creator-border bg-creator-white shadow-panel">
         <div className="overflow-x-auto">
-          <table className="min-w-[1180px] w-full text-left">
+          <table className="w-full min-w-[1240px] table-fixed text-left">
+            <colgroup>
+              <col className="w-[31%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
+              <col className="w-[9%]" />
+              <col className="w-[8%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[9%]" />
+            </colgroup>
             <thead className="border-b border-creator-border bg-creator-surface">
               <tr className="text-[10px] uppercase tracking-[0.15em] text-creator-muted">
-                <th className="px-5 py-3.5">Product</th><th className="px-5 py-3.5">SKU</th><th className="px-5 py-3.5">Category</th><th className="px-5 py-3.5">Price</th><th className="px-5 py-3.5">Quantity</th><th className="px-5 py-3.5">Availability</th><th className="px-5 py-3.5">Updated</th><th className="px-5 py-3.5">Action</th>
+                <th className="px-5 py-3.5">Product</th>
+                <th className="px-5 py-3.5">SKU</th>
+                <th className="px-5 py-3.5">Category</th>
+                <th className="px-5 py-3.5">Price</th>
+                <th className="px-5 py-3.5">Quantity</th>
+                <th className="px-5 py-3.5">Availability</th>
+                <th className="px-5 py-3.5">Updated</th>
+                <th className="px-5 py-3.5">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-creator-border">
               {products.map((product) => (
                 <tr key={product._id} className="hover:bg-creator-surface/60">
-                  <td className="px-5 py-4"><div className="flex items-center gap-3"><div className="h-11 w-11 shrink-0 overflow-hidden border border-creator-border bg-creator-surface">{product.image ? <img src={product.image} alt="" className="h-full w-full object-cover" /> : <PackageOpen size={18} className="m-3 text-creator-faint" />}</div><div className="min-w-0"><button type="button" onClick={() => { setSelected(product); setActionMessage(''); setActionError(''); }} className="truncate text-left text-sm font-semibold text-creator-black hover:underline">{product.name}</button><div className="mt-1 truncate text-xs text-creator-faint">/{product.slug}</div></div></div></td>
-                  <td className="px-5 py-4 text-xs font-medium text-creator-black">{product.sku || '—'}</td>
-                  <td className="px-5 py-4 text-sm text-creator-muted">{product.category || '—'}</td>
-                  <td className="px-5 py-4 text-sm font-semibold text-creator-black">{money(product.price)}</td>
-                  <td className="px-5 py-4 text-sm font-semibold text-creator-black">{Number(product.quantity || 0).toLocaleString('en-IN')}</td>
-                  <td className="px-5 py-4">{Number(product.quantity || 0) > 0 && !product.manualOutOfStock ? <span className="inline-flex items-center gap-1.5 text-xs font-medium text-creator-black"><CheckCircle2 size={14} /> Available</span> : <span className="inline-flex items-center gap-1.5 text-xs font-medium text-creator-muted"><XCircle size={14} /> {availabilityLabel(product)}</span>}</td>
-                  <td className="px-5 py-4 text-xs text-creator-muted">{formatDate(product.updatedAt)}</td>
-                  <td className="px-5 py-4"><button type="button" onClick={() => { setSelected(product); setActionMessage(''); setActionError(''); }} className="inline-flex items-center gap-1.5 rounded-md border border-creator-border px-3 py-2 text-xs font-semibold text-creator-black hover:bg-creator-surface">Manage <ArrowRight size={13} /></button></td>
+                  <td className="px-5 py-4 align-middle">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="h-11 w-11 shrink-0 overflow-hidden border border-creator-border bg-creator-surface">
+                        {product.image ? (
+                          <img src={product.image} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <PackageOpen size={18} className="m-3 text-creator-faint" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => { setSelected(product); setActionMessage(''); setActionError(''); }}
+                          title={product.name || ''}
+                          className="block max-w-full overflow-hidden text-left text-sm font-semibold leading-5 text-creator-black hover:underline [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                        >
+                          {product.name}
+                        </button>
+                        <div className="mt-1 max-w-full truncate text-xs text-creator-faint" title={product.slug ? `/${product.slug}` : ''}>
+                          /{product.slug}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 align-middle text-xs font-medium text-creator-black">
+                    <div className="truncate" title={product.sku || ''}>{product.sku || '—'}</div>
+                  </td>
+                  <td className="px-5 py-4 align-middle text-sm text-creator-muted">
+                    <div className="truncate" title={product.category || ''}>{product.category || '—'}</div>
+                  </td>
+                  <td className="px-5 py-4 align-middle text-sm font-semibold text-creator-black whitespace-nowrap">{money(product.price)}</td>
+                  <td className="px-5 py-4 align-middle text-sm font-semibold text-creator-black whitespace-nowrap">{Number(product.quantity || 0).toLocaleString('en-IN')}</td>
+                  <td className="px-5 py-4 align-middle">
+                    <div className="truncate" title={availabilityLabel(product)}>
+                      {Number(product.quantity || 0) > 0 && !product.manualOutOfStock ? (
+                        <span className="inline-flex max-w-full items-center gap-1.5 truncate text-xs font-medium text-creator-black">
+                          <CheckCircle2 size={14} className="shrink-0" /> Available
+                        </span>
+                      ) : (
+                        <span className="inline-flex max-w-full items-center gap-1.5 truncate text-xs font-medium text-creator-muted">
+                          <XCircle size={14} className="shrink-0" /> {availabilityLabel(product)}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-5 py-4 align-middle text-xs text-creator-muted">
+                    <div className="truncate" title={formatDate(product.updatedAt)}>{formatDate(product.updatedAt)}</div>
+                  </td>
+                  <td className="px-5 py-4 align-middle">
+                    <button
+                      type="button"
+                      onClick={() => { setSelected(product); setActionMessage(''); setActionError(''); }}
+                      className="inline-flex max-w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-creator-border px-3 py-2 text-xs font-semibold text-creator-black hover:bg-creator-surface"
+                    >
+                      Manage <ArrowRight size={13} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -412,6 +481,14 @@ export default function CatalogPage() {
       {stockOpen && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"><div className="w-full max-w-lg border border-creator-border bg-creator-white shadow-2xl"><ModalHeader title="Adjust stock" onClose={() => setStockOpen(false)} /><div className="space-y-5 p-5"><div className="text-sm font-semibold">{selected?.name}</div><div className="grid grid-cols-2 gap-3"><div className="border border-creator-border bg-creator-surface p-4"><div className="text-[10px] uppercase tracking-[0.12em] text-creator-faint">Current quantity</div><div className="mt-2 text-xl font-semibold">{Number(selected?.quantity || 0).toLocaleString('en-IN')}</div></div><div className="border border-creator-border bg-creator-surface p-4"><div className="text-[10px] uppercase tracking-[0.12em] text-creator-faint">Example</div><div className="mt-2 text-xs text-creator-muted">+20 restock · -5 correction</div></div></div><input value={stockDelta} onChange={(event) => setStockDelta(event.target.value)} inputMode="numeric" placeholder="Adjustment (+/- whole units)" className="w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" /><textarea value={stockReason} onChange={(event) => setStockReason(event.target.value)} placeholder="Reason" rows={3} className="w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" />{actionError && <div className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{actionError}</div>}<div className="flex justify-end gap-3"><button type="button" onClick={() => setStockOpen(false)} className="border border-creator-border px-4 py-2.5 text-sm">Cancel</button><button type="button" disabled={saving || !stockReason.trim()} onClick={applyStockAdjustment} className="inline-flex items-center gap-2 bg-creator-black px-4 py-2.5 text-sm font-semibold text-creator-white disabled:opacity-40">{saving && <Loader2 size={15} className="animate-spin" />}Apply adjustment</button></div></div></div></div>}
       {bulkOpen && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"><div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-creator-border bg-creator-white shadow-2xl"><ModalHeader title="Bulk import catalog" onClose={() => setBulkOpen(false)} /><div className="space-y-5 p-5"><div className="border border-creator-border bg-creator-surface p-4 text-sm text-creator-muted">Use the CSV template. Required columns: SKU, name, category, price, quantity, image and description. Separate multiple features with <strong className="text-creator-black">|</strong>.</div><div className="flex flex-wrap gap-2"><button type="button" onClick={downloadTemplate} className="inline-flex items-center gap-2 border border-creator-border px-3 py-2 text-xs font-semibold"><Download size={14} /> Download template</button><label className="inline-flex cursor-pointer items-center gap-2 bg-creator-black px-3 py-2 text-xs font-semibold text-creator-white"><FilePlus2 size={14} /> Choose CSV<input type="file" accept=".csv,text/csv" className="hidden" onChange={handleBulkFile} /></label></div>{bulkName && <div className="text-xs text-creator-muted">{bulkName} · {bulkRows.length} rows parsed</div>}{bulkError && <div className="border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{bulkError}</div>}{bulkRows.length > 0 && <div className="max-h-64 overflow-auto border border-creator-border"><table className="min-w-full text-left"><thead className="sticky top-0 border-b border-creator-border bg-creator-surface text-[10px] uppercase tracking-[0.12em] text-creator-muted"><tr><th className="px-3 py-2">SKU</th><th className="px-3 py-2">Name</th><th className="px-3 py-2">Category</th><th className="px-3 py-2">Price</th><th className="px-3 py-2">Qty</th></tr></thead><tbody>{bulkRows.slice(0, 25).map((row, index) => <tr key={`${row.sku}-${index}`} className="border-b border-creator-border text-xs"><td className="px-3 py-2">{row.sku}</td><td className="px-3 py-2">{row.name}</td><td className="px-3 py-2">{row.category}</td><td className="px-3 py-2">{row.price}</td><td className="px-3 py-2">{row.quantity}</td></tr>)}</tbody></table>{bulkRows.length > 25 && <div className="p-3 text-xs text-creator-muted">Showing first 25 rows of {bulkRows.length}.</div>}</div>}<textarea value={bulkReason} onChange={(event) => setBulkReason(event.target.value)} placeholder="Reason for this import" rows={3} className="w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" /><div className="flex justify-end gap-3"><button type="button" onClick={() => setBulkOpen(false)} className="border border-creator-border px-4 py-2.5 text-sm">Cancel</button><button type="button" disabled={saving || !bulkRows.length || !bulkReason.trim()} onClick={runBulkImport} className="inline-flex items-center gap-2 bg-creator-black px-4 py-2.5 text-sm font-semibold text-creator-white disabled:opacity-40">{saving && <Loader2 size={15} className="animate-spin" />}Import catalog</button></div></div></div></div>}
       {history && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"><div className="w-full max-w-3xl border border-creator-border bg-creator-white shadow-2xl"><ModalHeader title="Inventory history" onClose={() => setHistory(null)} /><div className="max-h-[70vh] overflow-y-auto p-5">{historyLoading ? <LoadingState label="Loading inventory history…" /> : history.error ? <ErrorState message={history.error} /> : history.entries.length ? history.entries.map((entry) => <div key={entry._id} className="grid gap-3 border-b border-creator-border py-4 md:grid-cols-[1fr_auto_1fr]"><div><div className="text-sm font-semibold">{entry.movementType.replaceAll('_', ' ')}</div><div className="mt-1 text-xs text-creator-muted">{entry.reason || '—'}</div></div><div className="text-sm font-semibold">{entry.quantityDelta > 0 ? '+' : ''}{entry.quantityDelta}</div><div className="text-xs text-creator-muted">{entry.beforeQuantity} → {entry.afterQuantity}<br />{formatDate(entry.createdAt)}</div></div>) : <div className="py-10 text-center text-sm text-creator-muted">No inventory movements yet.</div>}</div></div></div>}
+      <ProductResearchModal
+        open={researchOpen}
+        onClose={() => setResearchOpen(false)}
+        onImported={async () => {
+          setResearchOpen(false);
+          await loadCatalog();
+        }}
+      />
     </div>
   );
 }

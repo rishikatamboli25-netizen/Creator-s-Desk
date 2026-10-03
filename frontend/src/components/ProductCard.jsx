@@ -10,7 +10,7 @@ const ProductCard = ({ product }) => {
         <img 
           src={product.image || product.assets?.thumbnailUrl || 'https://images.unsplash.com/photo-1527443154391-507e9dc6c5cc?auto=format&fit=crop&q=80&w=800'} 
           alt={product.name}
-          className="w-full h-full object-cover grayscale opacity-90 group-hover:grayscale-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700 ease-in-out"
+          className="w-full h-full object-cover  opacity-90  group-hover:opacity-100 group-hover:scale-105 transition-all duration-700 ease-in-out"
         />
       </div>
       

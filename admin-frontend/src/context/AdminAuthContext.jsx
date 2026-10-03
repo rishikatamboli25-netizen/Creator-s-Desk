@@ -48,7 +48,7 @@ export function AdminAuthProvider({ children }) {
   }, [refreshAdmin]);
 
   const login = useCallback(async (email, password, otp = '') => {
-    await ensureCsrf();
+    await ensureCsrfToken(API_BASE);
 
     const response = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
@@ -81,7 +81,7 @@ export function AdminAuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      await ensureCsrf();
+      await ensureCsrfToken(API_BASE);
       await fetch(`${API_BASE}/auth/logout`, {
         method: 'POST',
         credentials: 'include',

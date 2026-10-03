@@ -28,7 +28,7 @@ const navItems = [
   { label: 'Invoices', to: '/invoices', icon: FileText, permission: 'orders.read', group: 'Finance' },
   { label: 'Admin Users', to: '/admin-users', icon: ShieldCheck, permission: 'admin_users.read', group: 'Administration' },
   { label: 'Audit Log', to: '/audit-log', icon: Activity, permission: 'audit.read', group: 'Administration' },
-  { label: 'Settings', to: '/settings', icon: Settings, permission: 'settings.read', group: 'Administration' },
+  { label: 'Settings', to: '/settings', icon: Settings, group: 'Administration' },
 ];
 
 function Navigation({ onNavigate }) {

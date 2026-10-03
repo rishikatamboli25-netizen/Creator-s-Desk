@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   Clock3,
@@ -39,6 +39,7 @@ const formatDate = (value) => {
 
 export default function SettingsPage() {
   const { admin, refreshAdmin } = useAdminAuth();
+  const canRead = admin?.permissions?.includes('settings.read');
   const canWrite = admin?.permissions?.includes('settings.write');
 
   const [settings, setSettings] = useState([]);
@@ -78,7 +79,7 @@ export default function SettingsPage() {
   const [mfaRecoveryPassword, setMfaRecoveryPassword] = useState('');
   const [mfaRecoveryOtp, setMfaRecoveryOtp] = useState('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -93,11 +94,19 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
+    if (!canRead) {
+      setSettings([]);
+      setDraft({});
+      setEditingSettings(false);
+      setLoading(false);
+      return;
+    }
+
     load();
-  }, []);
+  }, [canRead, load]);
 
   useEffect(() => {
     setAccountDraft((current) => ({
@@ -237,7 +246,7 @@ export default function SettingsPage() {
       setPasswordError('New password and confirmation do not match.');
       return;
     }
-    if (passwordDraft.newPassword.length < passwordMinLength) {
+    if (canRead && passwordDraft.newPassword.length < passwordMinLength) {
       setPasswordError(`New password must be at least ${passwordMinLength} characters.`);
       return;
     }
@@ -380,13 +389,13 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-[1200px]">
       <ModuleHeader
-        eyebrow="Administration"
+        eyebrow="Settings"
         title="Settings"
-        description="Permission-aware admin policies and configuration. Changes are audited and affect only newly created sessions, invitations, or password activations where applicable."
+        description="Manage your admin account and security. Administrative policies appear only when your role permits them."
         action={
           <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${canWrite ? 'border-creator-border bg-creator-white text-creator-black' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
             <ShieldCheck size={14} />
-            {canWrite ? 'Settings write access' : 'Read only'}
+            {canWrite ? 'Settings write access' : canRead ? 'Read only' : 'Personal settings'}
           </span>
         }
       />
@@ -394,100 +403,113 @@ export default function SettingsPage() {
       {error && <div className="mb-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {notice && <div className="mb-4 flex items-center gap-2 border border-creator-border bg-creator-white px-4 py-3 text-sm text-creator-black"><CheckCircle2 size={16} />{notice}</div>}
 
-      <form onSubmit={save}>
-        <section className="border border-creator-border bg-creator-white shadow-panel">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-creator-border px-6 py-5">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Admin policy</div>
-              <h2 className="mt-2 text-base font-semibold text-creator-black">Access and account policy</h2>
-              <p className="mt-1 text-sm leading-6 text-creator-muted">These values preserve the current defaults while making the policies explicitly manageable from CD_ADMIN.</p>
-            </div>
-            {canWrite && !editingSettings && (
-              <button
-                type="button"
-                onClick={() => { setEditingSettings(true); setNotice(''); setError(''); }}
-                className="rounded-md border border-creator-border bg-creator-white px-4 py-2.5 text-sm font-semibold text-creator-black hover:bg-creator-surface"
-              >
-                Edit settings
-              </button>
-            )}
-            {editingSettings && (
-              <button
-                type="button"
-                onClick={cancelSettingsEdit}
-                disabled={saving}
-                className="inline-flex items-center gap-2 rounded-md border border-creator-border px-4 py-2.5 text-sm font-medium text-creator-muted hover:bg-creator-surface disabled:opacity-40"
-              >
-                <X size={15} />
-                Cancel
-              </button>
-            )}
-          </div>
-
-          <div className="divide-y divide-creator-border">
-            {settings.map((item) => (
-              <div key={item.key} className="grid gap-5 px-6 py-6 md:grid-cols-[1fr_220px] md:items-center">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-creator-black">
-                    {item.key === 'ADMIN_SESSION_HOURS' && <Clock3 size={16} />}
-                    {item.key === 'INVITATION_EXPIRY_HOURS' && <KeyRound size={16} />}
-                    {item.key === 'PASSWORD_MIN_LENGTH' && <ShieldCheck size={16} />}
-                    {item.label}
-                  </div>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-creator-muted">{item.description}</p>
-                  <div className="mt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-creator-faint">
-                    Applies to {item.appliesTo.toLowerCase()} · default {item.defaultValue} {item.unit}
-                  </div>
-                  <div className="mt-2 text-[10px] text-creator-faint">Last customised: {formatDate(item.updatedAt)}</div>
-                </div>
-
-                <div>
-                  <label htmlFor={item.key} className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-creator-faint">Value</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      id={item.key}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      value={draft[item.key] ?? ''}
-                      readOnly={!editingSettings}
-                      disabled={!canWrite && !editingSettings}
-                      onChange={(event) => updateDraft(item.key, event.target.value)}
-                      className="w-full border border-creator-border bg-creator-white px-3 py-3 text-sm font-medium text-creator-black outline-none focus:border-creator-black read-only:cursor-default read-only:bg-creator-surface read-only:text-creator-black disabled:bg-creator-surface disabled:text-creator-muted"
-                    />
-                    <span className="min-w-[82px] text-xs text-creator-muted">{item.unit}</span>
-                  </div>
-                  <div className="mt-2 text-[10px] text-creator-faint">Allowed: {item.min}–{item.max}</div>
-                </div>
+      {canRead ? (
+        <form onSubmit={save}>
+          <section className="border border-creator-border bg-creator-white shadow-panel">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-creator-border px-6 py-5">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Admin policy</div>
+                <h2 className="mt-2 text-base font-semibold text-creator-black">Access and account policy</h2>
+                <p className="mt-1 text-sm leading-6 text-creator-muted">These values preserve the current defaults while making the policies explicitly manageable from CD_ADMIN.</p>
               </div>
-            ))}
-          </div>
-        </section>
+              {canWrite && !editingSettings && (
+                <button
+                  type="button"
+                  onClick={() => { setEditingSettings(true); setNotice(''); setError(''); }}
+                  className="rounded-md border border-creator-border bg-creator-white px-4 py-2.5 text-sm font-semibold text-creator-black hover:bg-creator-surface"
+                >
+                  Edit settings
+                </button>
+              )}
+              {editingSettings && (
+                <button
+                  type="button"
+                  onClick={cancelSettingsEdit}
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 rounded-md border border-creator-border px-4 py-2.5 text-sm font-medium text-creator-muted hover:bg-creator-surface disabled:opacity-40"
+                >
+                  <X size={15} />
+                  Cancel
+                </button>
+              )}
+            </div>
 
-        {editingSettings && (
-          <section className="mt-4 border border-creator-border bg-creator-white p-6 shadow-panel">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Change control</div>
-            <h2 className="mt-2 text-sm font-semibold text-creator-black">Why are you changing these settings?</h2>
-            <p className="mt-1 text-sm leading-6 text-creator-muted">A reason is required so the change appears in Audit Log with actor, role snapshot, request ID, before/after values and operator note.</p>
-            <textarea
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              disabled={!canWrite || saving || !dirty}
-              maxLength={500}
-              rows={3}
-              placeholder={dirty ? 'For example: Tighten admin session policy for internal access review.' : 'Make a setting change to add an audit reason.'}
-              className="mt-4 w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black disabled:bg-creator-surface disabled:text-creator-faint"
-            />
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button type="button" onClick={cancelSettingsEdit} disabled={saving} className="rounded-md border border-creator-border px-4 py-2.5 text-sm font-medium text-creator-muted hover:bg-creator-surface disabled:opacity-40">Cancel</button>
-              <button type="submit" disabled={!canWrite || !dirty || saving || reason.trim().length < 3} className="inline-flex items-center gap-2 rounded-md bg-creator-black px-4 py-2.5 text-sm font-semibold text-creator-white disabled:cursor-not-allowed disabled:opacity-40">
-                {saving ? <LoaderCircle size={15} className="animate-spin" /> : <Save size={15} />}
-                Save settings
-              </button>
+            <div className="divide-y divide-creator-border">
+              {settings.map((item) => (
+                <div key={item.key} className="grid gap-5 px-6 py-6 md:grid-cols-[1fr_220px] md:items-center">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-creator-black">
+                      {item.key === 'ADMIN_SESSION_HOURS' && <Clock3 size={16} />}
+                      {item.key === 'INVITATION_EXPIRY_HOURS' && <KeyRound size={16} />}
+                      {item.key === 'PASSWORD_MIN_LENGTH' && <ShieldCheck size={16} />}
+                      {item.label}
+                    </div>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-creator-muted">{item.description}</p>
+                    <div className="mt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-creator-faint">
+                      Applies to {item.appliesTo.toLowerCase()} · default {item.defaultValue} {item.unit}
+                    </div>
+                    <div className="mt-2 text-[10px] text-creator-faint">Last customised: {formatDate(item.updatedAt)}</div>
+                  </div>
+
+                  <div>
+                    <label htmlFor={item.key} className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-creator-faint">Value</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={item.key}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={draft[item.key] ?? ''}
+                        readOnly={!editingSettings}
+                        disabled={!canWrite && !editingSettings}
+                        onChange={(event) => updateDraft(item.key, event.target.value)}
+                        className="w-full border border-creator-border bg-creator-white px-3 py-3 text-sm font-medium text-creator-black outline-none focus:border-creator-black read-only:cursor-default read-only:bg-creator-surface read-only:text-creator-black disabled:bg-creator-surface disabled:text-creator-muted"
+                      />
+                      <span className="min-w-[82px] text-xs text-creator-muted">{item.unit}</span>
+                    </div>
+                    <div className="mt-2 text-[10px] text-creator-faint">Allowed: {item.min}–{item.max}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
-        )}
-      </form>
+
+          {editingSettings && (
+            <section className="mt-4 border border-creator-border bg-creator-white p-6 shadow-panel">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-creator-faint">Change control</div>
+              <h2 className="mt-2 text-sm font-semibold text-creator-black">Why are you changing these settings?</h2>
+              <p className="mt-1 text-sm leading-6 text-creator-muted">A reason is required so the change appears in Audit Log with actor, role snapshot, request ID, before/after values and operator note.</p>
+              <textarea
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                disabled={!canWrite || saving || !dirty}
+                maxLength={500}
+                rows={3}
+                placeholder={dirty ? 'For example: Tighten admin session policy for internal access review.' : 'Make a setting change to add an audit reason.'}
+                className="mt-4 w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black disabled:bg-creator-surface disabled:text-creator-faint"
+              />
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={cancelSettingsEdit} disabled={saving} className="rounded-md border border-creator-border px-4 py-2.5 text-sm font-medium text-creator-muted hover:bg-creator-surface disabled:opacity-40">Cancel</button>
+                <button type="submit" disabled={!canWrite || !dirty || saving || reason.trim().length < 3} className="inline-flex items-center gap-2 rounded-md bg-creator-black px-4 py-2.5 text-sm font-semibold text-creator-white disabled:cursor-not-allowed disabled:opacity-40">
+                  {saving ? <LoaderCircle size={15} className="animate-spin" /> : <Save size={15} />}
+                  Save settings
+                </button>
+              </div>
+            </section>
+          )}
+        </form>
+      ) : (
+        <section className="border border-creator-border bg-creator-white p-6 shadow-panel">
+          <div className="flex items-start gap-3">
+            <LockKeyhole size={18} className="mt-0.5" />
+            <div>
+              <h2 className="text-sm font-semibold text-creator-black">Administrative settings</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-creator-muted">Your account can use the personal settings below, but your role does not include access to global administrator policies.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="mt-4 border border-creator-border bg-creator-white p-6 shadow-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -571,7 +593,11 @@ export default function SettingsPage() {
                 <label className="text-sm font-medium text-creator-black">
                   New password
                   <input type="password" value={passwordDraft.newPassword} onChange={(event) => updatePasswordDraft('newPassword', event.target.value)} autoComplete="new-password" className="mt-2 w-full border border-creator-border px-3 py-3 text-sm outline-none focus:border-creator-black" />
-                  <span className="mt-2 block text-[10px] text-creator-faint">Minimum {passwordMinLength} characters</span>
+                  <span className="mt-2 block text-[10px] text-creator-faint">
+                    {canRead
+                      ? `Minimum ${passwordMinLength} characters`
+                      : 'Minimum length is enforced by your administrator.'}
+                  </span>
                 </label>
                 <label className="text-sm font-medium text-creator-black">
                   Confirm new password

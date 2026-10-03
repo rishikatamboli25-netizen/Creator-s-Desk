@@ -3,6 +3,10 @@ import { config } from '../config/index.js';
 import { requireAdminAuth, requirePermission } from '../middleware/authMiddleware.js';
 import { PERMISSIONS } from '../utils/permissions.js';
 import { recordAudit } from '../services/auditService.js';
+import {
+  prepareCatalogResearchProducts,
+  researchCatalogProducts,
+} from '../services/productResearchService.js';
 
 const router = express.Router();
 const PRODUCT_SERVICE_URL = config.productServiceUrl.replace(/\/$/, '');
@@ -40,6 +44,75 @@ const callProductService = async (path, options = {}) => {
 
   return data;
 };
+
+router.post(
+  '/research',
+  requireAdminAuth,
+  requirePermission(PERMISSIONS.PRODUCTS_BULK_CREATE),
+  async (req, res) => {
+    try {
+      const result = await researchCatalogProducts(config, req.body || {});
+
+      await recordAudit({
+        actorAdminUserId: req.admin._id,
+        actorRoleKey: req.adminRole?.key || req.admin.roleKey,
+        action: 'catalog.research.completed',
+        entityType: 'CatalogResearch',
+        entityId: req.requestId || null,
+        outcome: 'SUCCESS',
+        reason: `Catalog product research: ${String(req.body?.brief || '').trim().slice(0, 180)}`,
+        after: {
+          candidateCount: result.products.length,
+          model: result.model,
+          searchProvider: result.searchProvider,
+        },
+        metadata: { source: 'catalog.product-research' },
+        req,
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error('[CD_ADMIN] Catalog research error:', error.message);
+      return res.status(error.status || 502).json({
+        error: error.message || 'Unable to research catalog products.',
+      });
+    }
+  }
+);
+
+router.post(
+  '/research/prepare',
+  requireAdminAuth,
+  requirePermission(PERMISSIONS.PRODUCTS_BULK_CREATE),
+  async (req, res) => {
+    try {
+      const result = await prepareCatalogResearchProducts(
+        config,
+        req.body?.rows || []
+      );
+
+      await recordAudit({
+        actorAdminUserId: req.admin._id,
+        actorRoleKey: req.adminRole?.key || req.admin.roleKey,
+        action: 'catalog.research.images_prepared',
+        entityType: 'CatalogResearch',
+        entityId: req.requestId || null,
+        outcome: 'SUCCESS',
+        reason: 'Prepare approved catalog research products for import.',
+        after: { preparedCount: result.rows.length },
+        metadata: { source: 'catalog.product-research.prepare' },
+        req,
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error('[CD_ADMIN] Catalog research preparation error:', error.message);
+      return res.status(error.status || 502).json({
+        error: error.message || 'Unable to prepare catalog research products.',
+      });
+    }
+  }
+);
 
 const actorPayload = (req) => ({
   adminId: req.admin._id.toString(),

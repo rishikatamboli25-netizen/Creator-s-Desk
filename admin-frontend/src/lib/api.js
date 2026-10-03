@@ -116,6 +116,91 @@ export const adminApi = {
       true
     ),
 
+    
+  catalog: (params = {}) =>
+    request(
+      `${ADMIN_API_URL}/catalog${buildQuery(params)}`,
+      {},
+      true
+    ),
+
+  researchCatalog: (payload) =>
+    request(
+      `${ADMIN_API_URL}/catalog/research`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  prepareCatalogResearch: (rows) =>
+    request(
+      `${ADMIN_API_URL}/catalog/research/prepare`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ rows }),
+      },
+      true
+    ),
+
+  createCatalogProduct: (payload) =>
+    request(
+      `${ADMIN_API_URL}/catalog`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  updateCatalogProduct: (productId, payload) =>
+    request(
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      true
+    ),
+
+  adjustCatalogStock: (productId, delta, reason) =>
+    request(
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/stock-adjust`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ delta, reason }),
+      },
+      true
+    ),
+
+  setCatalogAvailability: (productId, available, reason) =>
+    request(
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/availability`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ available, reason }),
+      },
+      true
+    ),
+
+  catalogInventoryHistory: (productId) =>
+    request(
+      `${ADMIN_API_URL}/catalog/${encodeURIComponent(productId)}/inventory-history`,
+      {},
+      true
+    ),
+
+  bulkImportCatalog: (rows, reason) =>
+    request(
+      `${ADMIN_API_URL}/catalog/bulk-import`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ rows, reason }),
+      },
+      true
+    ),
+
   updatePrice: (
     productId,
     payload

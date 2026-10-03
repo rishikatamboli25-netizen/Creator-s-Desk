@@ -61,6 +61,28 @@ export const config = {
   adminInternalSecret:
     process.env.ADMIN_INTERNAL_SECRET || '',
 
+  groqApiKey:
+    process.env.GROQ_API_KEY || '',
+  groqModel:
+    process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+  aiRequestTimeoutMs: Math.max(5000, Math.min(60000, Number(process.env.AI_REQUEST_TIMEOUT_MS || 30000))),
+  aiProviderRetries: Math.max(0, Math.min(2, Number(process.env.AI_PROVIDER_RETRIES || 1))),
+
+  serpApiKey:
+    process.env.SERPAPI_KEY || '',
+  researchCountry:
+    process.env.RESEARCH_COUNTRY || 'IN',
+  catalogResearchMaxProducts: Math.max(1, Math.min(50, Number(process.env.CATALOG_RESEARCH_MAX_PRODUCTS || 30))),
+
+  cloudinaryCloudName:
+    process.env.CLOUDINARY_CLOUD_NAME || '',
+  cloudinaryApiKey:
+    process.env.CLOUDINARY_API_KEY || '',
+  cloudinaryApiSecret:
+    process.env.CLOUDINARY_API_SECRET || '',
+  cloudinaryFolder:
+    process.env.CLOUDINARY_FOLDER || 'creators-desk/catalog',
+
   mfaEncryptionKey:
     process.env.ADMIN_MFA_ENCRYPTION_KEY || '',
 };
