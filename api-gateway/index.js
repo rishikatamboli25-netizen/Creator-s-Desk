@@ -101,6 +101,16 @@ const createAIProxyOptions = (targetUrl) => ({
   xfwd: true,
 });
 
+app.use((req, res, next) => {
+  if (req.path.endsWith('/health')) {
+    console.log(
+      `[HEALTH CHECK] ${req.method} ${req.path} received at ${new Date().toISOString()}`
+    );
+  }
+
+  next();
+});
+
 app.use('/api/auth', createProxyMiddleware(createProxyOptions(SERVICE_URLS.auth, 'Auth')));
 app.use('/api/products', createProxyMiddleware(createProxyOptions(SERVICE_URLS.products, 'Products')));
 app.use('/api/orders', createProxyMiddleware(createProxyOptions(SERVICE_URLS.orders, 'Orders')));
