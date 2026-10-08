@@ -2,7 +2,7 @@ name: Render CronJob
 
 on:
   schedule:
-    - cron: "*/2 * * * *"
+    - cron: "*/5 * * * *"
 
   workflow_dispatch:
 
@@ -22,4 +22,5 @@ jobs:
       - name: Run cron job
         run: |
           echo "Cron job is running"
+          date
           node scripts/cron.js
